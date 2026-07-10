@@ -3,3 +3,5 @@ Name: ravshield
 Version: 0.1.0
 Summary: Open-source defensive cybersecurity engine for threat analysis, reputation intelligence, detection, correlation, and risk scoring.
 Requires-Python: >=3.11
+Provides-Extra: dev
+Requires-Dist: pytest>=9.0; extra == "dev"
