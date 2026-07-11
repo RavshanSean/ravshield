@@ -32,3 +32,6 @@ def validate_hash(hash_value: str, algorithm: str) -> bool:
         return False
 
     return bool(re.fullmatch(r"[0-9a-fA-F]+", hash_value))
+
+def normalize_hash(hash_value: str) -> str:
+    return hash_value.strip().lower()

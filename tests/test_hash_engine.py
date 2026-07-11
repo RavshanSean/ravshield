@@ -1,6 +1,16 @@
 from pathlib import Path
-from ravshield.engines.hash_engine import calculate_sha256, validate_hash
+from ravshield.engines.hash_engine import (
+    calculate_sha256,
+    normalize_hash,
+    validate_hash,
+)
 
+def test_normalize_hash():
+    raw_hash = "  ABCDEF123456  "
+
+    normalized = normalize_hash(raw_hash)
+
+    assert normalized == "abcdef123456"
 
 def test_calculate_sha256(tmp_path: Path):
     sample_file = tmp_path / "sample.txt"
