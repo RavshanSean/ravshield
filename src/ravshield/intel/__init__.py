@@ -1,3 +1,7 @@
+from ravshield.intel.history import (
+    DetectionHistoryStore,
+    IndicatorHistory,
+)
 from ravshield.intel.ioc import (
     IOC,
     SUPPORTED_IOC_TYPES,
@@ -19,8 +23,10 @@ from ravshield.intel.threat_record import ThreatRecord
 
 
 __all__ = [
+    "DetectionHistoryStore",
     "IOC",
     "IOCStore",
+    "IndicatorHistory",
     "SUPPORTED_IOC_TYPES",
     "ThreatIntelligenceStore",
     "ThreatRecord",
