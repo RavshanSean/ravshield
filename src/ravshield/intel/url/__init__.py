@@ -7,6 +7,12 @@ from .store import (
     URLReputationRecord,
     URLReputationStore,
 )
+
+from .heuristics import (
+    URLHeuristicResult,
+    analyze_url_heuristics,
+)
+
 from .validator import validate_url
 
 __all__ = [
@@ -16,4 +22,6 @@ __all__ = [
     "URLReputationStore",
     "URLReputationResult",
     "URLReputationService",
+    "URLHeuristicResult",
+    "analyze_url_heuristics",
 ]
