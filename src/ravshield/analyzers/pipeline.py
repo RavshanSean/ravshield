@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from ravshield.analyzers.base import BaseAnalyzer
 from ravshield.analyzers.registry import AnalyzerRegistry
 from ravshield.engines import MultiSignalVerdictEngine
 from ravshield.models import AnalysisResult, DetectionFinding
@@ -21,6 +22,13 @@ class ScanPipeline:
             verdict_engine or MultiSignalVerdictEngine()
         )
 
+    def register(self, analyzer: BaseAnalyzer) -> None:
+        """
+        Register an analyzer with the pipeline.
+        """
+
+        self.registry.register(analyzer)
+
     def analyze(self, target) -> AnalysisResult:
         """
         Run every registered analyzer against
@@ -40,3 +48,10 @@ class ScanPipeline:
             findings,
             analysis_modules=executed_modules,
         )
+
+    def scan(self, target) -> AnalysisResult:
+        """
+        Public convenience method for scanning a target.
+        """
+
+        return self.analyze(target)
