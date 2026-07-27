@@ -5,6 +5,7 @@ from .url import URLAnalyzer
 from .url_heuristics import URLHeuristicAnalyzer
 from .factory import create_url_pipeline
 from .ioc import IOCAnalyzer
+from .domain_heuristics import DomainHeuristicAnalyzer
 
 __all__ = [
     "BaseAnalyzer",
@@ -14,4 +15,5 @@ __all__ = [
     "URLHeuristicAnalyzer",
     "create_url_pipeline",
     "IOCAnalyzer",
+    "DomainHeuristicAnalyzer",
 ]
