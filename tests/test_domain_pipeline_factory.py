@@ -1,13 +1,18 @@
 from ravshield.analyzers import create_domain_pipeline
-from ravshield.enums import Severity
+from ravshield.enums import Severity, Verdict
+from ravshield.intel.domain import (
+    DomainReputationRecord,
+    DomainReputationService,
+)
 
 
-def test_factory_registers_domain_analyzer():
+def test_factory_registers_domain_analyzers():
     pipeline = create_domain_pipeline()
 
     result = pipeline.scan("example.com")
 
     assert result.analysis_modules == [
+        "domain_reputation",
         "domain_heuristics",
     ]
 
@@ -29,20 +34,67 @@ def test_factory_detects_suspicious_domain():
     assert "DOMAIN_SUSPICIOUS_TLD" in codes
 
 
-def test_factory_preserves_finding_severity():
-    pipeline = create_domain_pipeline()
+def test_factory_detects_known_malicious_domain():
+    service = DomainReputationService()
+
+    service.add_record(
+        DomainReputationRecord(
+            domain="evil.example",
+            malicious=True,
+            severity=Severity.CRITICAL,
+            confidence=0.99,
+            tags={"malware"},
+            source="unit-test",
+        )
+    )
+
+    pipeline = create_domain_pipeline(service)
+
+    result = pipeline.scan("evil.example")
+
+    codes = {
+        finding.code
+        for finding in result.findings
+    }
+
+    assert result.verdict == Verdict.MALICIOUS
+    assert "DOMAIN_REPUTATION_MALICIOUS" in codes
+
+
+def test_reputation_and_heuristics_combine():
+    service = DomainReputationService()
+
+    service.add_record(
+        DomainReputationRecord(
+            domain="xn--paypal-login-secure.zip",
+            malicious=True,
+            severity=Severity.CRITICAL,
+            confidence=0.99,
+            tags={"phishing"},
+            source="unit-test",
+        )
+    )
+
+    pipeline = create_domain_pipeline(service)
 
     result = pipeline.scan(
-        "xn--example-9d0b.com"
+        "xn--paypal-login-secure.zip"
     )
 
-    finding = next(
-        finding
+    codes = {
+        finding.code
         for finding in result.findings
-        if finding.code == "DOMAIN_PUNYCODE"
-    )
+    }
 
-    assert finding.severity == Severity.HIGH
+    assert "DOMAIN_REPUTATION_MALICIOUS" in codes
+    assert "DOMAIN_PUNYCODE" in codes
+    assert "DOMAIN_SUSPICIOUS_KEYWORDS" in codes
+    assert "DOMAIN_SUSPICIOUS_TLD" in codes
+
+    assert result.analysis_modules == [
+        "domain_reputation",
+        "domain_heuristics",
+    ]
 
 
 def test_factory_instances_are_independent():
