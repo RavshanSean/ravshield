@@ -9,6 +9,11 @@ from ravshield.intel.email.store import (
     EmailReputationStore,
 )
 
+from ravshield.intel.email.reputation import (
+    EmailReputationResult,
+    EmailReputationService,
+)
+
 
 __all__ = [
     "normalize_email",
@@ -17,4 +22,6 @@ __all__ = [
     "analyze_email_heuristics",
     "EmailReputationRecord",
     "EmailReputationStore",
+    "EmailReputationResult",
+    "EmailReputationService",
 ]

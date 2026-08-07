@@ -8,10 +8,12 @@ from .ioc import IOCAnalyzer
 from .domain_heuristics import DomainHeuristicAnalyzer
 from .domain import DomainReputationAnalyzer
 from .email_heuristics import EmailHeuristicAnalyzer
+from .email import EmailReputationAnalyzer
 from .factory import (
     create_domain_pipeline,
     create_url_pipeline,
 )
+
 
 __all__ = [
     "BaseAnalyzer",
@@ -25,4 +27,5 @@ __all__ = [
     "DomainReputationAnalyzer",
     "DomainHeuristicAnalyzer",
     "EmailHeuristicAnalyzer",
+    "EmailReputationAnalyzer",
 ]
