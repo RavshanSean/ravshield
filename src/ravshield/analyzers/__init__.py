@@ -9,6 +9,7 @@ from .domain_heuristics import DomainHeuristicAnalyzer
 from .domain import DomainReputationAnalyzer
 from .email_heuristics import EmailHeuristicAnalyzer
 from .email import EmailReputationAnalyzer
+from .ip_heuristics import IPHeuristicAnalyzer
 from .factory import (
     create_domain_pipeline,
     create_email_pipeline,
@@ -30,4 +31,5 @@ __all__ = [
     "EmailHeuristicAnalyzer",
     "EmailReputationAnalyzer",
     "create_email_pipeline",
+    "IPHeuristicAnalyzer",
 ]
