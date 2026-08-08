@@ -9,6 +9,11 @@ from ravshield.intel.ip.heuristics import (
     analyze_ip_heuristics,
 )
 
+from ravshield.intel.ip.store import (
+    IPReputationRecord,
+    IPReputationStore,
+)
+
 
 __all__ = [
     "normalize_ip",
@@ -17,4 +22,6 @@ __all__ = [
     "classify_ip",
     "IPHeuristicResult",
     "analyze_ip_heuristics",
+    "IPReputationRecord",
+    "IPReputationStore",
 ]
