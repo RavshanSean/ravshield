@@ -118,7 +118,9 @@ def test_multiple_findings_are_correlated() -> None:
         ],
     )
 
-    assert result.verdict is Verdict.MALICIOUS
+    # Heuristics / behavioral signals alone must not escalate to
+    # MALICIOUS even when the stacked risk score is high.
+    assert result.verdict is Verdict.SUSPICIOUS
     assert result.risk_score == 70
     assert result.severity is Severity.HIGH
     assert result.analysis_modules == [

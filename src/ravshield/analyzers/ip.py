@@ -1,42 +1,30 @@
 from __future__ import annotations
 
-from typing import Any
-
 from ravshield.analyzers.base import BaseAnalyzer
-from ravshield.analyzers.email_target import resolve_email_address
-from ravshield.intel.email import EmailReputationService
+from ravshield.intel.ip import IPReputationService
 from ravshield.models import DetectionFinding
 
 
-class EmailReputationAnalyzer(BaseAnalyzer):
+class IPReputationAnalyzer(BaseAnalyzer):
     """
-    Analyze email addresses using RavShield reputation intelligence.
+    Analyze IP addresses using RavShield reputation intelligence.
     """
 
-    name = "email_reputation"
+    name = "ip_reputation"
 
     def __init__(
         self,
-        reputation_service: EmailReputationService | None = None,
+        reputation_service: IPReputationService | None = None,
     ) -> None:
         self.reputation_service = (
-            reputation_service or EmailReputationService()
+            reputation_service or IPReputationService()
         )
 
     def analyze(
         self,
-        target: Any,
+        target: str,
     ) -> list[DetectionFinding]:
-        """
-        Check email reputation and convert the result into findings.
-        """
-
-        address = resolve_email_address(target)
-
-        if address is None:
-            return []
-
-        result = self.reputation_service.check(address)
+        result = self.reputation_service.check(target)
 
         if not result.known:
             return []
@@ -46,16 +34,16 @@ class EmailReputationAnalyzer(BaseAnalyzer):
         if result.malicious:
             return [
                 DetectionFinding(
-                    code="EMAIL_REPUTATION_MALICIOUS",
-                    title="Known malicious email address",
+                    code="IP_REPUTATION_MALICIOUS",
+                    title="Known malicious IP",
                     description=(
-                        "The email address matches a known malicious "
+                        "The IP matches a known malicious "
                         "reputation record."
                     ),
                     severity=result.severity,
                     confidence=confidence,
                     evidence={
-                        "email": result.email,
+                        "ip": result.ip,
                         "source": result.source,
                         "tags": sorted(result.tags),
                         "malicious": True,
@@ -68,16 +56,16 @@ class EmailReputationAnalyzer(BaseAnalyzer):
 
         return [
             DetectionFinding(
-                code="EMAIL_REPUTATION_KNOWN",
-                title="Known email reputation",
+                code="IP_REPUTATION_KNOWN",
+                title="Known IP reputation",
                 description=(
-                    "The email address exists in reputation intelligence "
+                    "The IP exists in reputation intelligence "
                     "and is not currently marked as malicious."
                 ),
                 severity=result.severity,
                 confidence=confidence,
                 evidence={
-                    "email": result.email,
+                    "ip": result.ip,
                     "source": result.source,
                     "tags": sorted(result.tags),
                     "malicious": False,

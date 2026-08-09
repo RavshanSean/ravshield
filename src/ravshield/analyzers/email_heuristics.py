@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from typing import Any
+
 from ravshield.analyzers.base import BaseAnalyzer
+from ravshield.analyzers.email_target import resolve_email_address
 from ravshield.enums import Severity
 from ravshield.intel.email import analyze_email_heuristics
 from ravshield.models import DetectionFinding
@@ -68,9 +71,14 @@ class EmailHeuristicAnalyzer(BaseAnalyzer):
 
     def analyze(
         self,
-        target: str,
+        target: Any,
     ) -> list[DetectionFinding]:
-        result = analyze_email_heuristics(target)
+        address = resolve_email_address(target)
+
+        if address is None:
+            return []
+
+        result = analyze_email_heuristics(address)
 
         findings: list[DetectionFinding] = []
 

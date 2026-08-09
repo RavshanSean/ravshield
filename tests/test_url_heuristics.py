@@ -70,12 +70,30 @@ def test_suspicious_keywords_are_detected():
     ]
 
 
-def test_encoded_characters_are_detected():
+def test_normal_encoding_is_ignored():
+    result = analyze_url_heuristics(
+        "https://example.com/search?q=hello%20world"
+    )
+
+    assert "suspicious_encoding" not in result.signals
+
+
+def test_suspicious_encoding_is_detected():
     result = analyze_url_heuristics(
         "https://example.com/%76%65%72%69%66%79"
     )
 
-    assert "encoded_characters" in result.signals
+    assert "suspicious_encoding" in result.signals
+    assert "encoded_unreserved" in result.details
+    assert "%76" in result.details["encoded_unreserved"]
+
+
+def test_keyword_substring_false_positive_is_avoided():
+    result = analyze_url_heuristics(
+        "https://example.com/securely-documented"
+    )
+
+    assert "suspicious_keywords" not in result.signals
 
 
 def test_multiple_signals_can_be_detected():
@@ -86,4 +104,4 @@ def test_multiple_signals_can_be_detected():
     assert "embedded_credentials" in result.signals
     assert "excessive_subdomains" in result.signals
     assert "suspicious_keywords" in result.signals
-    assert "encoded_characters" in result.signals
+    assert "suspicious_encoding" in result.signals

@@ -41,4 +41,4 @@ def test_multiple_findings():
     assert "URL_EMBEDDED_CREDENTIALS" in codes
     assert "URL_SUSPICIOUS_KEYWORDS" in codes
     assert "URL_EXCESSIVE_SUBDOMAINS" in codes
-    assert "URL_ENCODED_CHARACTERS" in codes
+    assert "URL_SUSPICIOUS_ENCODING" in codes

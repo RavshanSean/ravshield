@@ -11,17 +11,37 @@ from ravshield.models import AnalysisResult, DetectionFinding, Evidence
 from ravshield.scoring import calculate_confidence
 
 
-# Finding codes that represent especially strong malicious evidence.
+# Finding codes that represent confirmed malicious intelligence.
+# Heuristic / behavioral codes must NEVER appear here.
 STRONG_SIGNAL_CODES = {
     "ioc_match",
     "reputation_malicious",
+    "URL_REPUTATION_MALICIOUS",
+    "DOMAIN_REPUTATION_MALICIOUS",
+    "EMAIL_REPUTATION_MALICIOUS",
+    "IP_REPUTATION_MALICIOUS",
+    "HASH_REPUTATION_MALICIOUS",
+    "FILE_HASH_IOC_MATCH",
+    "ENRICHMENT_MALICIOUS_TAG",
 }
-
 
 # Finding codes that explicitly describe a trusted or safe indicator.
 SAFE_SIGNAL_CODES = {
     "reputation_safe",
+    "URL_REPUTATION_KNOWN",
+    "DOMAIN_REPUTATION_KNOWN",
+    "EMAIL_REPUTATION_KNOWN",
+    "IP_REPUTATION_KNOWN",
+    "HASH_REPUTATION_CLEAN",
 }
+
+
+def is_strong_malicious_code(code: str) -> bool:
+    return code in STRONG_SIGNAL_CODES
+
+
+def is_safe_signal_code(code: str) -> bool:
+    return code in SAFE_SIGNAL_CODES
 
 
 def verdict_from_signals(
@@ -34,11 +54,11 @@ def verdict_from_signals(
     Rules:
 
     1. No findings means RavShield does not have enough evidence.
-    2. Explicit malicious intelligence produces a malicious verdict.
-    3. A risk score of 70 or more produces a malicious verdict.
-    4. Any remaining risk produces a suspicious verdict.
-    5. An explicit trusted signal with no threat signals produces safe.
-    6. Otherwise the result remains unknown.
+    2. Confirmed malicious intelligence (IOC / reputation) → MALICIOUS.
+    3. Heuristics and behavioral signals alone never escalate past
+       SUSPICIOUS, even when the stacked risk score is high.
+    4. An explicit trusted signal with no threat signals → SAFE.
+    5. Otherwise the result remains UNKNOWN.
     """
 
     if not findings:
@@ -49,12 +69,14 @@ def verdict_from_signals(
         for finding in findings
     }
 
-    has_strong_malicious_signal = bool(
-        finding_codes & STRONG_SIGNAL_CODES
+    has_strong_malicious_signal = any(
+        is_strong_malicious_code(code)
+        for code in finding_codes
     )
 
-    has_safe_signal = bool(
-        finding_codes & SAFE_SIGNAL_CODES
+    has_safe_signal = any(
+        is_safe_signal_code(code)
+        for code in finding_codes
     )
 
     has_threat_signal = any(
@@ -66,16 +88,13 @@ def verdict_from_signals(
             Severity.CRITICAL,
         }
         for finding in findings
-        if finding.code not in SAFE_SIGNAL_CODES
+        if not is_safe_signal_code(finding.code)
     )
 
     if has_strong_malicious_signal:
         return Verdict.MALICIOUS
 
-    if risk_score >= 70:
-        return Verdict.MALICIOUS
-
-    if risk_score > 0:
+    if has_threat_signal or risk_score > 0:
         return Verdict.SUSPICIOUS
 
     if has_safe_signal and not has_threat_signal:
@@ -98,7 +117,8 @@ def recommended_action_from_verdict(
         ),
         Verdict.SUSPICIOUS: (
             "Investigate the indicator further before allowing "
-            "or trusting it."
+            "or trusting it. Heuristic signals alone are not "
+            "sufficient for an automatic block."
         ),
         Verdict.SAFE: (
             "No immediate threat response is required, but normal "
@@ -151,7 +171,7 @@ class MultiSignalVerdictEngine:
     This engine receives those findings and makes the final decision.
     """
 
-    VERSION = "0.1.0"
+    VERSION = "0.2.0"
 
     def analyze(
         self,
@@ -189,7 +209,7 @@ class MultiSignalVerdictEngine:
         }
 
         strong_signal_count = sum(
-            finding.code in STRONG_SIGNAL_CODES
+            is_strong_malicious_code(finding.code)
             or finding.severity
             in {
                 Severity.HIGH,
@@ -198,12 +218,13 @@ class MultiSignalVerdictEngine:
             for finding in findings
         )
 
-        has_safe_signal = bool(
-            finding_codes & SAFE_SIGNAL_CODES
+        has_safe_signal = any(
+            is_safe_signal_code(code)
+            for code in finding_codes
         )
 
         has_threat_signal = any(
-            finding.code not in SAFE_SIGNAL_CODES
+            not is_safe_signal_code(finding.code)
             and finding.severity != Severity.INFO
             for finding in findings
         )
