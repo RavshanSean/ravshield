@@ -16,6 +16,7 @@ def test_factory_registers_email_analyzers():
     assert result.analysis_modules == [
         "email_reputation",
         "email_heuristics",
+        "email_auth",
     ]
 
 
@@ -98,6 +99,7 @@ def test_reputation_and_heuristics_combine():
     assert result.analysis_modules == [
         "email_reputation",
         "email_heuristics",
+        "email_auth",
     ]
 
 

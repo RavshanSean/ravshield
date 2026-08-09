@@ -2,14 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ravshield.models import Severity
-
-from .normalize import normalize_url
-from .store import (
+from ravshield.enums import Severity
+from ravshield.intel.lifecycle import (
+    effective_confidence,
+    is_expired,
+)
+from ravshield.intel.url.normalize import normalize_url
+from ravshield.intel.url.store import (
     URLReputationRecord,
     URLReputationStore,
 )
-from .validator import validate_url
+from ravshield.intel.url.validator import validate_url
 
 
 @dataclass(slots=True)
@@ -25,6 +28,8 @@ class URLReputationResult:
     confidence: float
     tags: set[str]
     source: str | None = None
+    source_confidence: float | None = None
+    expired: bool = False
 
 
 class URLReputationService:
@@ -63,14 +68,32 @@ class URLReputationService:
                 source=None,
             )
 
+        if is_expired(record.expires_at):
+            return URLReputationResult(
+                url=normalized_url,
+                known=False,
+                malicious=False,
+                severity=Severity.INFO,
+                confidence=0.0,
+                tags=set(),
+                source=record.source,
+                source_confidence=record.source_confidence,
+                expired=True,
+            )
+
         return URLReputationResult(
             url=record.url,
             known=True,
             malicious=record.malicious,
             severity=record.severity,
-            confidence=record.confidence,
+            confidence=effective_confidence(
+                record.confidence,
+                record.source_confidence,
+                expires_at=record.expires_at,
+            ),
             tags=set(record.tags),
             source=record.source,
+            source_confidence=record.source_confidence,
         )
 
     def add_record(
@@ -92,6 +115,8 @@ class URLReputationService:
             confidence=record.confidence,
             tags=set(record.tags),
             source=record.source,
+            source_confidence=record.source_confidence,
+            expires_at=record.expires_at,
             first_seen=record.first_seen,
             last_seen=record.last_seen,
         )

@@ -51,6 +51,23 @@ def test_high_entropy():
     assert "high_entropy" in result.signals
 
 
+def test_brand_impersonation():
+    result = analyze_domain_heuristics(
+        "paypa1-secure-login.tk"
+    )
+
+    assert "brand_impersonation" in result.signals
+    assert "suspicious_tld" in result.signals
+
+
+def test_keyword_substring_false_positive_is_avoided():
+    result = analyze_domain_heuristics(
+        "securely.example.com"
+    )
+
+    assert "suspicious_keywords" not in result.signals
+
+
 def test_multiple_signals():
     result = analyze_domain_heuristics(
         "xn--paypal-login-secure.zip"

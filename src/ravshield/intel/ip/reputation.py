@@ -9,6 +9,10 @@ from ravshield.intel.ip.store import (
     IPReputationStore,
 )
 from ravshield.intel.ip.validator import validate_ip
+from ravshield.intel.lifecycle import (
+    effective_confidence,
+    is_expired,
+)
 
 
 @dataclass(slots=True)
@@ -24,6 +28,8 @@ class IPReputationResult:
     confidence: float
     tags: set[str]
     source: str | None = None
+    source_confidence: float | None = None
+    expired: bool = False
 
 
 class IPReputationService:
@@ -62,14 +68,32 @@ class IPReputationService:
                 source=None,
             )
 
+        if is_expired(record.expires_at):
+            return IPReputationResult(
+                ip=normalized_ip,
+                known=False,
+                malicious=False,
+                severity=Severity.INFO,
+                confidence=0.0,
+                tags=set(),
+                source=record.source,
+                source_confidence=record.source_confidence,
+                expired=True,
+            )
+
         return IPReputationResult(
             ip=record.ip,
             known=True,
             malicious=record.malicious,
             severity=record.severity,
-            confidence=record.confidence,
+            confidence=effective_confidence(
+                record.confidence,
+                record.source_confidence,
+                expires_at=record.expires_at,
+            ),
             tags=set(record.tags),
             source=record.source,
+            source_confidence=record.source_confidence,
         )
 
     def add_record(

@@ -9,6 +9,10 @@ from ravshield.intel.domain.store import (
     DomainReputationStore,
 )
 from ravshield.intel.domain.validator import validate_domain
+from ravshield.intel.lifecycle import (
+    effective_confidence,
+    is_expired,
+)
 
 
 @dataclass(slots=True)
@@ -24,6 +28,8 @@ class DomainReputationResult:
     confidence: float
     tags: set[str]
     source: str | None = None
+    source_confidence: float | None = None
+    expired: bool = False
 
 
 class DomainReputationService:
@@ -62,14 +68,32 @@ class DomainReputationService:
                 source=None,
             )
 
+        if is_expired(record.expires_at):
+            return DomainReputationResult(
+                domain=normalized_domain,
+                known=False,
+                malicious=False,
+                severity=Severity.INFO,
+                confidence=0.0,
+                tags=set(),
+                source=record.source,
+                source_confidence=record.source_confidence,
+                expired=True,
+            )
+
         return DomainReputationResult(
             domain=record.domain,
             known=True,
             malicious=record.malicious,
             severity=record.severity,
-            confidence=record.confidence,
+            confidence=effective_confidence(
+                record.confidence,
+                record.source_confidence,
+                expires_at=record.expires_at,
+            ),
             tags=set(record.tags),
             source=record.source,
+            source_confidence=record.source_confidence,
         )
 
     def add_record(

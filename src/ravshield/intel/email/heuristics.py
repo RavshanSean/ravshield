@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ravshield.intel.email.normalize import normalize_email
+from ravshield.intel.text_match import keyword_matches
 
 
 DISPOSABLE_EMAIL_DOMAINS = {
@@ -13,6 +14,14 @@ DISPOSABLE_EMAIL_DOMAINS = {
     "tempmail.com",
     "throwawaymail.com",
     "yopmail.com",
+    "trashmail.com",
+    "discard.email",
+    "mailnesia.com",
+    "getnada.com",
+    "tempail.com",
+    "emailondeck.com",
+    "fakeinbox.com",
+    "sharklasers.com",
 }
 
 SUSPICIOUS_LOCAL_KEYWORDS = {
@@ -71,10 +80,9 @@ def analyze_email_heuristics(
         signals.add("disposable_provider")
         details["provider"] = domain
 
-    matched_keywords = sorted(
-        keyword
-        for keyword in SUSPICIOUS_LOCAL_KEYWORDS
-        if keyword in local_part
+    matched_keywords = keyword_matches(
+        local_part,
+        SUSPICIOUS_LOCAL_KEYWORDS,
     )
 
     if matched_keywords:

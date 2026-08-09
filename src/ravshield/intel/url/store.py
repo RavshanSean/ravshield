@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
-from ravshield.models import Severity
+from ravshield.enums import Severity
+from ravshield.intel.lifecycle import validate_lifecycle_fields
 
 
 @dataclass(slots=True)
@@ -20,6 +21,8 @@ class URLReputationRecord:
     tags: set[str] = field(default_factory=set)
 
     source: str = "ravshield"
+    source_confidence: float = 1.0
+    expires_at: datetime | None = None
 
     first_seen: datetime = field(
         default_factory=lambda: datetime.now(UTC)
@@ -28,6 +31,17 @@ class URLReputationRecord:
     last_seen: datetime = field(
         default_factory=lambda: datetime.now(UTC)
     )
+
+    def __post_init__(self) -> None:
+        (
+            self.confidence,
+            self.source_confidence,
+            self.source,
+        ) = validate_lifecycle_fields(
+            confidence=self.confidence,
+            source_confidence=self.source_confidence,
+            source=self.source,
+        )
 
 
 class URLReputationStore:
@@ -64,6 +78,24 @@ class URLReputationStore:
 
     def clear(self) -> None:
         self._records.clear()
+
+    def purge_expired(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> int:
+        from ravshield.intel.lifecycle import is_expired
+
+        expired_keys = [
+            key
+            for key, record in self._records.items()
+            if is_expired(record.expires_at, now=now)
+        ]
+
+        for key in expired_keys:
+            del self._records[key]
+
+        return len(expired_keys)
 
     def __len__(self) -> int:
         return len(self._records)

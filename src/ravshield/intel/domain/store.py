@@ -5,6 +5,10 @@ from datetime import UTC, datetime
 
 from ravshield.enums import Severity
 from ravshield.intel.domain.normalize import normalize_domain
+from ravshield.intel.lifecycle import (
+    is_expired,
+    validate_lifecycle_fields,
+)
 
 
 @dataclass(slots=True)
@@ -20,6 +24,8 @@ class DomainReputationRecord:
 
     tags: set[str] = field(default_factory=set)
     source: str = "ravshield"
+    source_confidence: float = 1.0
+    expires_at: datetime | None = None
 
     first_seen: datetime = field(
         default_factory=lambda: datetime.now(UTC)
@@ -32,12 +38,15 @@ class DomainReputationRecord:
     def __post_init__(self) -> None:
         self.domain = normalize_domain(self.domain)
 
-        if not 0.0 <= self.confidence <= 1.0:
-            raise ValueError(
-                "Domain confidence must be between 0.0 and 1.0."
-            )
-
-        self.source = self.source.strip() or "ravshield"
+        (
+            self.confidence,
+            self.source_confidence,
+            self.source,
+        ) = validate_lifecycle_fields(
+            confidence=self.confidence,
+            source_confidence=self.source_confidence,
+            source=self.source,
+        )
 
 
 class DomainReputationStore:
@@ -83,6 +92,22 @@ class DomainReputationStore:
 
     def clear(self) -> None:
         self._records.clear()
+
+    def purge_expired(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> int:
+        expired_keys = [
+            key
+            for key, record in self._records.items()
+            if is_expired(record.expires_at, now=now)
+        ]
+
+        for key in expired_keys:
+            del self._records[key]
+
+        return len(expired_keys)
 
     def all(self) -> list[DomainReputationRecord]:
         return list(self._records.values())

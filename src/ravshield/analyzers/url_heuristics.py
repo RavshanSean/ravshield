@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from ravshield.analyzers.base import BaseAnalyzer
+from ravshield.enums import Severity
 from ravshield.intel.url import analyze_url_heuristics
-from ravshield.models import DetectionFinding, Severity
+from ravshield.models import DetectionFinding
 
 
 SIGNAL_SEVERITY = {
@@ -12,7 +13,7 @@ SIGNAL_SEVERITY = {
     "excessive_subdomains": Severity.MEDIUM,
     "long_hostname": Severity.LOW,
     "long_url": Severity.LOW,
-    "encoded_characters": Severity.MEDIUM,
+    "suspicious_encoding": Severity.MEDIUM,
 }
 
 

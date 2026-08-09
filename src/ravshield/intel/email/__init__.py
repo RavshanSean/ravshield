@@ -4,6 +4,10 @@ from ravshield.intel.email.heuristics import (
     EmailHeuristicResult,
     analyze_email_heuristics,
 )
+from ravshield.intel.email.auth import (
+    EmailAuthResult,
+    analyze_email_auth_headers,
+)
 from ravshield.intel.email.store import (
     EmailReputationRecord,
     EmailReputationStore,
@@ -20,6 +24,8 @@ __all__ = [
     "validate_email",
     "EmailHeuristicResult",
     "analyze_email_heuristics",
+    "EmailAuthResult",
+    "analyze_email_auth_headers",
     "EmailReputationRecord",
     "EmailReputationStore",
     "EmailReputationResult",

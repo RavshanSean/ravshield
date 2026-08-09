@@ -35,7 +35,7 @@ def test_factory_detects_suspicious_unknown_url():
     assert "URL_EMBEDDED_CREDENTIALS" in codes
     assert "URL_SUSPICIOUS_KEYWORDS" in codes
     assert "URL_EXCESSIVE_SUBDOMAINS" in codes
-    assert "URL_ENCODED_CHARACTERS" in codes
+    assert "URL_SUSPICIOUS_ENCODING" in codes
 
 
 def test_factory_accepts_custom_reputation_service():

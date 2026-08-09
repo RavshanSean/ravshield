@@ -44,7 +44,7 @@ def test_reputation_and_heuristics_flow_through_pipeline():
     assert "URL_EMBEDDED_CREDENTIALS" in codes
     assert "URL_SUSPICIOUS_KEYWORDS" in codes
     assert "URL_EXCESSIVE_SUBDOMAINS" in codes
-    assert "URL_ENCODED_CHARACTERS" in codes
+    assert "URL_SUSPICIOUS_ENCODING" in codes
 
     assert "url_reputation" in result.analysis_modules
     assert "url_heuristics" in result.analysis_modules
@@ -66,11 +66,12 @@ def test_unknown_suspicious_url_is_detected_by_heuristics():
 
     assert "URL_REPUTATION_MALICIOUS" not in codes
     assert "URL_REPUTATION_KNOWN" not in codes
+    assert result.verdict == Verdict.SUSPICIOUS
 
     assert "URL_EMBEDDED_CREDENTIALS" in codes
     assert "URL_SUSPICIOUS_KEYWORDS" in codes
     assert "URL_EXCESSIVE_SUBDOMAINS" in codes
-    assert "URL_ENCODED_CHARACTERS" in codes
+    assert "URL_SUSPICIOUS_ENCODING" in codes
 
     assert len(result.findings) >= 4
 
