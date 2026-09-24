@@ -14,6 +14,7 @@ from .ip import IPReputationAnalyzer
 from .factory import (
     create_domain_pipeline,
     create_email_pipeline,
+    create_ip_pipeline,
     create_url_pipeline,
 )
 
@@ -33,5 +34,6 @@ __all__ = [
     "EmailReputationAnalyzer",
     "create_email_pipeline",
     "IPHeuristicAnalyzer",
+    "create_ip_pipeline",
     "IPReputationAnalyzer",
 ]
