@@ -1,5 +1,6 @@
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
+from unittest.mock import patch
 
 import pytest
 
@@ -7,6 +8,7 @@ from ravshield.intel.file.archive import (
     analyze_archive_size_risk,
     find_nested_archives,
     find_suspicious_archive_files,
+    find_encrypted_archive_files,
     inspect_zip,
 )
 
@@ -206,3 +208,61 @@ def test_empty_archive_has_zero_compression_ratio(tmp_path: Path):
     assert result.uncompressed_size == 0
     assert result.compression_ratio == 0.0
     assert result.signals == set()
+    
+def test_finds_encrypted_archive_files(tmp_path: Path):
+    zip_path = tmp_path / "encrypted.zip"
+    zip_path.write_bytes(b"fake zip")
+
+    class FakeZipInfo:
+        def __init__(
+            self,
+            filename: str,
+            flag_bits: int,
+        ):
+            self.filename = filename
+            self.flag_bits = flag_bits
+
+        def is_dir(self) -> bool:
+            return False
+
+    entries = [
+        FakeZipInfo("notes.txt", 0),
+        FakeZipInfo("secret.txt", 0x1),
+        FakeZipInfo("private/data.bin", 0x1),
+    ]
+
+    with patch(
+        "ravshield.intel.file.archive.ZipFile"
+    ) as mock_zip:
+        mock_zip.return_value.__enter__.return_value.infolist.return_value = entries
+
+        result = find_encrypted_archive_files(zip_path)
+
+    assert result == [
+        "secret.txt",
+        "private/data.bin",
+    ]
+    
+def test_no_encrypted_archive_files_returns_empty_list(tmp_path: Path):
+    zip_path = tmp_path / "normal.zip"
+
+    with ZipFile(zip_path, "w") as archive:
+        archive.writestr("notes.txt", "hello")
+        archive.writestr("photo.jpg", "fake image")
+
+    result = find_encrypted_archive_files(zip_path)
+
+    assert result == []
+
+
+def test_encrypted_archive_detection_rejects_invalid_zip(
+    tmp_path: Path,
+):
+    zip_path = tmp_path / "fake.zip"
+    zip_path.write_text("not actually a zip")
+
+    with pytest.raises(
+        ValueError,
+        match="Invalid ZIP archive.",
+    ):
+        find_encrypted_archive_files(zip_path)

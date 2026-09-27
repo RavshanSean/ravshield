@@ -82,6 +82,31 @@ def find_nested_archives(
 
     return nested_archives
 
+def find_encrypted_archive_files(
+    file_path: str | Path,
+) -> list[str]:
+    """
+    Find encrypted files stored inside a ZIP archive.
+
+    The archive contents are not decrypted or extracted.
+    """
+
+    if not validate_file(file_path):
+        raise ValueError("Invalid file path.")
+
+    try:
+        with ZipFile(file_path, "r") as archive:
+            encrypted_files = [
+                info.filename
+                for info in archive.infolist()
+                if not info.is_dir()
+                and info.flag_bits & 0x1
+            ]
+    except BadZipFile as exc:
+        raise ValueError("Invalid ZIP archive.") from exc
+
+    return encrypted_files
+
 def analyze_archive_size_risk(
     file_path: str | Path,
     *,
