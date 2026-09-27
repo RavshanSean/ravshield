@@ -51,6 +51,23 @@ def find_suspicious_archive_files(
 
     return suspicious
 
+def find_nested_archives(
+    filenames: list[str],
+) -> list[str]:
+    """
+    Find ZIP archives stored inside another ZIP archive.
+    """
+
+    nested_archives: list[str] = []
+
+    for filename in filenames:
+        path = PurePosixPath(filename)
+
+        if path.suffix.lower() == ".zip":
+            nested_archives.append(filename)
+
+    return nested_archives
+
 
 def inspect_zip(
     file_path: str | Path,

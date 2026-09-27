@@ -4,6 +4,7 @@ from zipfile import ZipFile
 import pytest
 
 from ravshield.intel.file.archive import (
+    find_nested_archives,
     find_suspicious_archive_files,
     inspect_zip,
 )
@@ -103,6 +104,32 @@ def test_finds_double_extension_inside_archive():
             "double_extension",
         }
     }
+    
+def test_finds_nested_zip_files():
+    filenames = [
+        "notes.txt",
+        "documents.zip",
+        "backup/archive.ZIP",
+    ]
+
+    result = find_nested_archives(filenames)
+
+    assert result == [
+        "documents.zip",
+        "backup/archive.ZIP",
+    ]
+
+
+def test_no_nested_zip_files_returns_empty_list():
+    filenames = [
+        "notes.txt",
+        "photo.jpg",
+        "report.pdf",
+    ]
+
+    result = find_nested_archives(filenames)
+
+    assert result == []
 
 
 def test_safe_archive_filenames_have_no_signals():
