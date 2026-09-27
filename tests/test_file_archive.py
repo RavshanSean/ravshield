@@ -1,9 +1,10 @@
 from pathlib import Path
-from zipfile import ZipFile
+from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
 
 from ravshield.intel.file.archive import (
+    analyze_archive_size_risk,
     find_nested_archives,
     find_suspicious_archive_files,
     inspect_zip,
@@ -142,3 +143,66 @@ def test_safe_archive_filenames_have_no_signals():
     result = find_suspicious_archive_files(filenames)
 
     assert result == {}
+    
+def test_normal_archive_has_no_size_risk(tmp_path: Path):
+    zip_path = tmp_path / "normal.zip"
+
+    with ZipFile(zip_path, "w") as archive:
+        archive.writestr("hello.txt", "hello world")
+
+    result = analyze_archive_size_risk(zip_path)
+
+    assert result.uncompressed_size == 11
+    assert result.signals == set()
+    assert result.suspicious is False
+
+
+def test_excessive_uncompressed_size_is_detected(tmp_path: Path):
+    zip_path = tmp_path / "large.zip"
+
+    with ZipFile(zip_path, "w") as archive:
+        archive.writestr("large.txt", "A" * 100)
+
+    result = analyze_archive_size_risk(
+        zip_path,
+        max_uncompressed_size=50,
+    )
+
+    assert "excessive_uncompressed_size" in result.signals
+    assert result.suspicious is True
+
+
+def test_excessive_compression_ratio_is_detected(tmp_path: Path):
+    zip_path = tmp_path / "compressed.zip"
+
+    with ZipFile(
+        zip_path,
+        "w",
+        compression=ZIP_DEFLATED,
+    ) as archive:
+        archive.writestr(
+            "repeated.txt",
+            "A" * 10_000,
+        )
+
+    result = analyze_archive_size_risk(
+        zip_path,
+        max_compression_ratio=10.0,
+    )
+
+    assert "excessive_compression_ratio" in result.signals
+    assert result.suspicious is True
+
+
+def test_empty_archive_has_zero_compression_ratio(tmp_path: Path):
+    zip_path = tmp_path / "empty.zip"
+
+    with ZipFile(zip_path, "w"):
+        pass
+
+    result = analyze_archive_size_risk(zip_path)
+
+    assert result.compressed_size == 0
+    assert result.uncompressed_size == 0
+    assert result.compression_ratio == 0.0
+    assert result.signals == set()
