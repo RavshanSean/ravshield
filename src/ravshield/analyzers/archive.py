@@ -66,6 +66,7 @@ SIGNAL_CONFIG = {
     },
 }
 
+
 class ArchiveAnalyzer(BaseAnalyzer):
     """
     Convert ZIP archive security signals into detection findings.
@@ -102,5 +103,45 @@ class ArchiveAnalyzer(BaseAnalyzer):
                         },
                     )
                 )
+
+        size_risk = analyze_archive_size_risk(target)
+
+        for signal in sorted(size_risk.signals):
+            config = SIGNAL_CONFIG[signal]
+
+            findings.append(
+                DetectionFinding(
+                    code=config["code"],
+                    title=config["title"],
+                    description=config["description"],
+                    severity=config["severity"],
+                    confidence=config["confidence"],
+                    evidence={
+                        "signal": signal,
+                        "compressed_size": size_risk.compressed_size,
+                        "uncompressed_size": size_risk.uncompressed_size,
+                        "compression_ratio": size_risk.compression_ratio,
+                    },
+                )
+            )
+            
+        encrypted_files = find_encrypted_archive_files(target)
+
+        for filename in encrypted_files:
+            config = SIGNAL_CONFIG["encrypted_entry"]
+
+            findings.append(
+                DetectionFinding(
+                    code=config["code"],
+                    title=config["title"],
+                    description=config["description"],
+                    severity=config["severity"],
+                    confidence=config["confidence"],
+                    evidence={
+                        "signal": "encrypted_entry",
+                        "filename": filename,
+                    },
+                )
+            )
 
         return findings
