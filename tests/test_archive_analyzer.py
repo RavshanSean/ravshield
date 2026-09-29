@@ -134,3 +134,29 @@ def test_archive_analyzer_creates_encrypted_entry_finding(
     assert finding.confidence == 100
     assert finding.evidence["signal"] == "encrypted_entry"
     assert finding.evidence["filename"] == "secret.txt"
+    
+def test_archive_analyzer_reports_nested_zip(
+    tmp_path: Path,
+):
+    zip_path = tmp_path / "outer.zip"
+
+    with ZipFile(zip_path, "w") as archive:
+        archive.writestr("documents.zip", "nested archive placeholder")
+
+    analyzer = ArchiveAnalyzer()
+    findings = analyzer.analyze(zip_path)
+
+    matching = [
+        finding
+        for finding in findings
+        if finding.code == "ARCHIVE_NESTED_ZIP"
+    ]
+
+    assert len(matching) == 1
+
+    finding = matching[0]
+
+    assert finding.severity == Severity.LOW
+    assert finding.confidence == 100
+    assert finding.evidence["signal"] == "nested_archive"
+    assert finding.evidence["filename"] == "documents.zip"
