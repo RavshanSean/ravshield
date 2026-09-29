@@ -7,6 +7,7 @@ from ravshield.enums import Severity
 from ravshield.intel.file.archive import (
     analyze_archive_size_risk,
     find_encrypted_archive_files,
+    find_nested_archives,
     find_suspicious_archive_files,
     inspect_zip,
 )
@@ -62,6 +63,16 @@ SIGNAL_CONFIG = {
         "description": (
             "The archive contains an encrypted file whose contents "
             "cannot be fully inspected without decryption."
+        ),
+    },
+    "nested_archive": {
+        "code": "ARCHIVE_NESTED_ZIP",
+        "title": "Nested ZIP archive detected",
+        "severity": Severity.LOW,
+        "confidence": 100,
+        "description": (
+            "The archive contains another ZIP archive that may "
+            "require additional inspection."
         ),
     },
 }
@@ -124,7 +135,7 @@ class ArchiveAnalyzer(BaseAnalyzer):
                     },
                 )
             )
-            
+
         encrypted_files = find_encrypted_archive_files(target)
 
         for filename in encrypted_files:
@@ -139,6 +150,27 @@ class ArchiveAnalyzer(BaseAnalyzer):
                     confidence=config["confidence"],
                     evidence={
                         "signal": "encrypted_entry",
+                        "filename": filename,
+                    },
+                )
+            )
+
+        nested_archives = find_nested_archives(
+            inspection.filenames,
+        )
+
+        for filename in nested_archives:
+            config = SIGNAL_CONFIG["nested_archive"]
+
+            findings.append(
+                DetectionFinding(
+                    code=config["code"],
+                    title=config["title"],
+                    description=config["description"],
+                    severity=config["severity"],
+                    confidence=config["confidence"],
+                    evidence={
+                        "signal": "nested_archive",
                         "filename": filename,
                     },
                 )
