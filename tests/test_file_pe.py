@@ -253,3 +253,41 @@ def test_parse_pe_sections_reads_section_fields(
     assert section.raw_data_size == 0x600
     assert section.raw_data_pointer == 0x400
     assert section.characteristics == 0x60000020
+    
+def test_parse_pe_sections_rejects_truncated_section_table(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "truncated_sections.exe"
+
+    data = bytearray(100)
+
+    # DOS header
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(
+        4,
+        byteorder="little",
+    )
+
+    # PE signature
+    data[64:68] = b"PE\x00\x00"
+
+    # COFF header starts at offset 68
+    coff_offset = 68
+
+    # Claim that the PE contains one section
+    data[coff_offset + 2:coff_offset + 4] = (
+        1
+    ).to_bytes(2, byteorder="little")
+
+    # No optional header
+    data[coff_offset + 16:coff_offset + 18] = (
+        0
+    ).to_bytes(2, byteorder="little")
+
+    file_path.write_bytes(data)
+
+    with pytest.raises(
+        ValueError,
+        match="Truncated PE section table",
+    ):
+        parse_pe_sections(file_path)
