@@ -11,6 +11,7 @@ PE_DOS_SIGNATURE = b"MZ"
 
 PE_SIGNATURE = b"PE\x00\x00"
 COFF_HEADER_SIZE = 20
+SECTION_HEADER_SIZE = 40
 
 
 @dataclass(slots=True)
@@ -19,6 +20,15 @@ class PEHeader:
     number_of_sections: int
     timestamp: int
     size_of_optional_header: int
+    characteristics: int
+    
+@dataclass(slots=True)
+class PESection:
+    name: str
+    virtual_size: int
+    virtual_address: int
+    raw_data_size: int
+    raw_data_pointer: int
     characteristics: int
 
 
@@ -133,3 +143,99 @@ def parse_pe_header(
             byteorder="little",
         ),
     )
+    
+def parse_pe_sections(
+    file_path: str | Path,
+) -> list[PESection]:
+    """
+    Parse section headers from a PE file.
+    """
+
+    if not validate_file(file_path):
+        raise ValueError("Invalid file path.")
+
+    path = Path(file_path).expanduser()
+    file_size = path.stat().st_size
+    header = parse_pe_header(path)
+
+    with path.open("rb") as file:
+        file.seek(0x3C)
+        offset_bytes = file.read(4)
+
+        if len(offset_bytes) != 4:
+            raise ValueError("Invalid PE file.")
+
+        pe_offset = int.from_bytes(
+            offset_bytes,
+            byteorder="little",
+        )
+
+        section_table_offset = (
+            pe_offset
+            + 4
+            + COFF_HEADER_SIZE
+            + header.size_of_optional_header
+        )
+
+        section_table_size = (
+            header.number_of_sections
+            * SECTION_HEADER_SIZE
+        )
+
+        if (
+            section_table_offset > file_size
+            or section_table_size
+            > file_size - section_table_offset
+        ):
+            raise ValueError("Truncated PE section table.")
+
+        file.seek(section_table_offset)
+
+        sections: list[PESection] = []
+
+        for _ in range(header.number_of_sections):
+            section_header = file.read(
+                SECTION_HEADER_SIZE,
+            )
+
+            if len(section_header) != SECTION_HEADER_SIZE:
+                raise ValueError(
+                    "Truncated PE section header."
+                )
+
+            raw_name = section_header[0:8]
+            name = raw_name.split(
+                b"\x00",
+                1,
+            )[0].decode(
+                "ascii",
+                errors="replace",
+            )
+
+            sections.append(
+                PESection(
+                    name=name,
+                    virtual_size=int.from_bytes(
+                        section_header[8:12],
+                        byteorder="little",
+                    ),
+                    virtual_address=int.from_bytes(
+                        section_header[12:16],
+                        byteorder="little",
+                    ),
+                    raw_data_size=int.from_bytes(
+                        section_header[16:20],
+                        byteorder="little",
+                    ),
+                    raw_data_pointer=int.from_bytes(
+                        section_header[20:24],
+                        byteorder="little",
+                    ),
+                    characteristics=int.from_bytes(
+                        section_header[36:40],
+                        byteorder="little",
+                    ),
+                )
+            )
+
+    return sections

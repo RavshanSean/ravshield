@@ -6,6 +6,7 @@ from ravshield.intel.file.pe import (
     has_pe_signature,
     has_valid_pe_header,
     parse_pe_header,
+    parse_pe_sections,
 )
 
 
@@ -175,3 +176,80 @@ def test_parse_pe_header_rejects_truncated_coff_header(
         match="Truncated PE COFF header",
     ):
         parse_pe_header(file_path)
+        
+def test_parse_pe_sections_reads_section_fields(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "sections.exe"
+
+    data = bytearray(512)
+
+    # DOS header
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(
+        4,
+        byteorder="little",
+    )
+
+    # PE signature
+    data[64:68] = b"PE\x00\x00"
+
+    # COFF header
+    coff_offset = 68
+
+    # AMD64
+    data[coff_offset:coff_offset + 2] = (
+        0x8664
+    ).to_bytes(2, byteorder="little")
+
+    # One section
+    data[coff_offset + 2:coff_offset + 4] = (
+        1
+    ).to_bytes(2, byteorder="little")
+
+    # No optional header in this synthetic PE
+    data[coff_offset + 16:coff_offset + 18] = (
+        0
+    ).to_bytes(2, byteorder="little")
+
+    # Section table begins after PE signature + COFF header
+    section_offset = 88
+
+    data[section_offset:section_offset + 8] = (
+        b".text\x00\x00\x00"
+    )
+
+    data[section_offset + 8:section_offset + 12] = (
+        0x1000
+    ).to_bytes(4, byteorder="little")
+
+    data[section_offset + 12:section_offset + 16] = (
+        0x2000
+    ).to_bytes(4, byteorder="little")
+
+    data[section_offset + 16:section_offset + 20] = (
+        0x600
+    ).to_bytes(4, byteorder="little")
+
+    data[section_offset + 20:section_offset + 24] = (
+        0x400
+    ).to_bytes(4, byteorder="little")
+
+    data[section_offset + 36:section_offset + 40] = (
+        0x60000020
+    ).to_bytes(4, byteorder="little")
+
+    file_path.write_bytes(data)
+
+    sections = parse_pe_sections(file_path)
+
+    assert len(sections) == 1
+
+    section = sections[0]
+
+    assert section.name == ".text"
+    assert section.virtual_size == 0x1000
+    assert section.virtual_address == 0x2000
+    assert section.raw_data_size == 0x600
+    assert section.raw_data_pointer == 0x400
+    assert section.characteristics == 0x60000020
