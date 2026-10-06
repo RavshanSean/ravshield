@@ -10,6 +10,7 @@ from ravshield.intel.file.pe import (
     parse_pe_header,
     parse_pe_sections,
     calculate_entropy,
+    calculate_section_entropies,
 )
 
 
@@ -454,3 +455,109 @@ def test_varied_bytes_have_higher_entropy():
 
     assert high_entropy > low_entropy
     assert high_entropy == pytest.approx(8.0)
+    
+def test_calculate_section_entropies_reads_raw_section_data(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "entropy.exe"
+
+    data = bytearray(512)
+
+    # DOS header
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(
+        4,
+        byteorder="little",
+    )
+
+    # PE signature
+    data[64:68] = b"PE\x00\x00"
+
+    # COFF header
+    coff_offset = 68
+
+    data[coff_offset + 2:coff_offset + 4] = (
+        1
+    ).to_bytes(2, byteorder="little")
+
+    data[coff_offset + 16:coff_offset + 18] = (
+        0
+    ).to_bytes(2, byteorder="little")
+
+    # Section header
+    section_offset = 88
+
+    data[section_offset:section_offset + 8] = (
+        b".text\x00\x00\x00"
+    )
+
+    # Raw data size = 256 bytes
+    data[section_offset + 16:section_offset + 20] = (
+        256
+    ).to_bytes(4, byteorder="little")
+
+    # Raw data begins at offset 256
+    data[section_offset + 20:section_offset + 24] = (
+        256
+    ).to_bytes(4, byteorder="little")
+
+    # Give the section all possible byte values.
+    data[256:512] = bytes(range(256))
+
+    file_path.write_bytes(data)
+
+    entropies = calculate_section_entropies(
+        file_path
+    )
+
+    assert entropies[".text"] == pytest.approx(8.0)
+    
+def test_section_entropy_rejects_out_of_bounds_raw_data(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "bad_section_data.exe"
+
+    data = bytearray(256)
+
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(
+        4,
+        byteorder="little",
+    )
+
+    data[64:68] = b"PE\x00\x00"
+
+    coff_offset = 68
+
+    data[coff_offset + 2:coff_offset + 4] = (
+        1
+    ).to_bytes(2, byteorder="little")
+
+    data[coff_offset + 16:coff_offset + 18] = (
+        0
+    ).to_bytes(2, byteorder="little")
+
+    section_offset = 88
+
+    data[section_offset:section_offset + 8] = (
+        b".text\x00\x00\x00"
+    )
+
+    # Claims 100 bytes of section data...
+    data[section_offset + 16:section_offset + 20] = (
+        100
+    ).to_bytes(4, byteorder="little")
+
+    # ...starting at byte 220.
+    # 220 + 100 exceeds the real 256-byte file.
+    data[section_offset + 20:section_offset + 24] = (
+        220
+    ).to_bytes(4, byteorder="little")
+
+    file_path.write_bytes(data)
+
+    with pytest.raises(
+        ValueError,
+        match="PE section data exceeds file bounds",
+    ):
+        calculate_section_entropies(file_path)

@@ -320,3 +320,50 @@ def calculate_entropy(data: bytes) -> float:
         )
 
     return entropy
+
+def calculate_section_entropies(
+    file_path: str | Path,
+) -> dict[str, float]:
+    """
+    Calculate Shannon entropy for the raw data of each PE section.
+    """
+
+    if not validate_file(file_path):
+        raise ValueError("Invalid file path.")
+
+    path = Path(file_path).expanduser()
+    file_size = path.stat().st_size
+    sections = parse_pe_sections(path)
+
+    entropies: dict[str, float] = {}
+
+    with path.open("rb") as file:
+        for section in sections:
+            start = section.raw_data_pointer
+            size = section.raw_data_size
+
+            if size == 0:
+                entropies[section.name] = 0.0
+                continue
+
+            if (
+                start > file_size
+                or size > file_size - start
+            ):
+                raise ValueError(
+                    "PE section data exceeds file bounds."
+                )
+
+            file.seek(start)
+            section_data = file.read(size)
+
+            if len(section_data) != size:
+                raise ValueError(
+                    "Truncated PE section data."
+                )
+
+            entropies[section.name] = calculate_entropy(
+                section_data
+            )
+
+    return entropies
