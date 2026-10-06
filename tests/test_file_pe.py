@@ -9,6 +9,7 @@ from ravshield.intel.file.pe import (
     has_writable_executable_section,
     parse_pe_header,
     parse_pe_sections,
+    calculate_entropy,
 )
 
 
@@ -433,3 +434,23 @@ def test_normal_section_name_is_not_suspicious(
     assert find_suspicious_section_names(
         file_path
     ) == []
+    
+def test_empty_data_has_zero_entropy():
+    assert calculate_entropy(b"") == 0.0
+
+
+def test_repeated_bytes_have_zero_entropy():
+    assert calculate_entropy(b"A" * 100) == 0.0
+
+
+def test_varied_bytes_have_higher_entropy():
+    low_entropy = calculate_entropy(
+        b"A" * 256
+    )
+
+    high_entropy = calculate_entropy(
+        bytes(range(256))
+    )
+
+    assert high_entropy > low_entropy
+    assert high_entropy == pytest.approx(8.0)
