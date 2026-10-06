@@ -12,6 +12,8 @@ PE_DOS_SIGNATURE = b"MZ"
 PE_SIGNATURE = b"PE\x00\x00"
 COFF_HEADER_SIZE = 20
 SECTION_HEADER_SIZE = 40
+IMAGE_SCN_MEM_EXECUTE = 0x20000000
+IMAGE_SCN_MEM_WRITE = 0x80000000
 
 
 @dataclass(slots=True)
@@ -239,3 +241,27 @@ def parse_pe_sections(
             )
 
     return sections
+
+def has_writable_executable_section(
+    file_path: str | Path,
+) -> bool:
+    """
+    Return True when any PE section is both writable and executable.
+    """
+
+    sections = parse_pe_sections(file_path)
+
+    for section in sections:
+        is_executable = bool(
+            section.characteristics
+            & IMAGE_SCN_MEM_EXECUTE
+        )
+        is_writable = bool(
+            section.characteristics
+            & IMAGE_SCN_MEM_WRITE
+        )
+
+        if is_executable and is_writable:
+            return True
+
+    return False
