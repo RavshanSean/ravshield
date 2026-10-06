@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from ravshield.intel.file.pe import (
+    find_suspicious_section_names,
     has_pe_signature,
     has_valid_pe_header,
     has_writable_executable_section,
@@ -359,3 +360,76 @@ def test_normal_executable_section_is_not_writable_executable(
         has_writable_executable_section(file_path)
         is False
     )
+    
+def test_suspicious_packer_section_name_is_detected(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "packed.exe"
+
+    data = bytearray(512)
+
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(
+        4,
+        byteorder="little",
+    )
+
+    data[64:68] = b"PE\x00\x00"
+
+    coff_offset = 68
+
+    data[coff_offset + 2:coff_offset + 4] = (
+        1
+    ).to_bytes(2, byteorder="little")
+
+    data[coff_offset + 16:coff_offset + 18] = (
+        0
+    ).to_bytes(2, byteorder="little")
+
+    section_offset = 88
+    data[section_offset:section_offset + 8] = (
+        b"UPX0\x00\x00\x00\x00"
+    )
+
+    file_path.write_bytes(data)
+
+    assert find_suspicious_section_names(
+        file_path
+    ) == ["UPX0"]
+
+
+def test_normal_section_name_is_not_suspicious(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "normal.exe"
+
+    data = bytearray(512)
+
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(
+        4,
+        byteorder="little",
+    )
+
+    data[64:68] = b"PE\x00\x00"
+
+    coff_offset = 68
+
+    data[coff_offset + 2:coff_offset + 4] = (
+        1
+    ).to_bytes(2, byteorder="little")
+
+    data[coff_offset + 16:coff_offset + 18] = (
+        0
+    ).to_bytes(2, byteorder="little")
+
+    section_offset = 88
+    data[section_offset:section_offset + 8] = (
+        b".text\x00\x00\x00"
+    )
+
+    file_path.write_bytes(data)
+
+    assert find_suspicious_section_names(
+        file_path
+    ) == []

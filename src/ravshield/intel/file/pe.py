@@ -15,6 +15,18 @@ SECTION_HEADER_SIZE = 40
 IMAGE_SCN_MEM_EXECUTE = 0x20000000
 IMAGE_SCN_MEM_WRITE = 0x80000000
 
+SUSPICIOUS_SECTION_NAMES = {
+    "upx0",
+    "upx1",
+    "upx2",
+    ".aspack",
+    ".adata",
+    ".packed",
+    ".petite",
+    ".vmp0",
+    ".vmp1",
+}
+
 
 @dataclass(slots=True)
 class PEHeader:
@@ -265,3 +277,23 @@ def has_writable_executable_section(
             return True
 
     return False
+
+def find_suspicious_section_names(
+    file_path: str | Path,
+) -> list[str]:
+    """
+    Return PE section names associated with common packers
+    or executable protectors.
+    """
+
+    sections = parse_pe_sections(file_path)
+
+    matches: list[str] = []
+
+    for section in sections:
+        normalized_name = section.name.lower()
+
+        if normalized_name in SUSPICIOUS_SECTION_NAMES:
+            matches.append(section.name)
+
+    return matches
