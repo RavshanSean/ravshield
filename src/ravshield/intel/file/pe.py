@@ -16,6 +16,7 @@ COFF_HEADER_SIZE = 20
 SECTION_HEADER_SIZE = 40
 IMAGE_SCN_MEM_EXECUTE = 0x20000000
 IMAGE_SCN_MEM_WRITE = 0x80000000
+HIGH_ENTROPY_THRESHOLD = 7.5
 
 SUSPICIOUS_SECTION_NAMES = {
     "upx0",
@@ -367,3 +368,27 @@ def calculate_section_entropies(
             )
 
     return entropies
+
+def find_high_entropy_sections(
+    file_path: str | Path,
+    threshold: float = HIGH_ENTROPY_THRESHOLD,
+) -> dict[str, float]:
+    """
+    Return PE sections whose entropy meets or exceeds
+    the configured threshold.
+    """
+
+    if not 0.0 <= threshold <= 8.0:
+        raise ValueError(
+            "Entropy threshold must be between 0.0 and 8.0."
+        )
+
+    entropies = calculate_section_entropies(
+        file_path
+    )
+
+    return {
+        name: entropy
+        for name, entropy in entropies.items()
+        if entropy >= threshold
+    }

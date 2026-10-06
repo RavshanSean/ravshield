@@ -11,6 +11,7 @@ from ravshield.intel.file.pe import (
     parse_pe_sections,
     calculate_entropy,
     calculate_section_entropies,
+    find_high_entropy_sections,
 )
 
 
@@ -561,3 +562,116 @@ def test_section_entropy_rejects_out_of_bounds_raw_data(
         match="PE section data exceeds file bounds",
     ):
         calculate_section_entropies(file_path)
+        
+def test_high_entropy_section_is_detected(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "high_entropy.exe"
+
+    data = bytearray(512)
+
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(
+        4,
+        byteorder="little",
+    )
+
+    data[64:68] = b"PE\x00\x00"
+
+    coff_offset = 68
+
+    data[coff_offset + 2:coff_offset + 4] = (
+        1
+    ).to_bytes(2, byteorder="little")
+
+    data[coff_offset + 16:coff_offset + 18] = (
+        0
+    ).to_bytes(2, byteorder="little")
+
+    section_offset = 88
+
+    data[section_offset:section_offset + 8] = (
+        b".text\x00\x00\x00"
+    )
+
+    data[section_offset + 16:section_offset + 20] = (
+        256
+    ).to_bytes(4, byteorder="little")
+
+    data[section_offset + 20:section_offset + 24] = (
+        256
+    ).to_bytes(4, byteorder="little")
+
+    data[256:512] = bytes(range(256))
+
+    file_path.write_bytes(data)
+
+    matches = find_high_entropy_sections(
+        file_path
+    )
+
+    assert ".text" in matches
+    assert matches[".text"] == pytest.approx(8.0)
+
+
+def test_low_entropy_section_is_not_detected(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "low_entropy.exe"
+
+    data = bytearray(512)
+
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(
+        4,
+        byteorder="little",
+    )
+
+    data[64:68] = b"PE\x00\x00"
+
+    coff_offset = 68
+
+    data[coff_offset + 2:coff_offset + 4] = (
+        1
+    ).to_bytes(2, byteorder="little")
+
+    data[coff_offset + 16:coff_offset + 18] = (
+        0
+    ).to_bytes(2, byteorder="little")
+
+    section_offset = 88
+
+    data[section_offset:section_offset + 8] = (
+        b".text\x00\x00\x00"
+    )
+
+    data[section_offset + 16:section_offset + 20] = (
+        256
+    ).to_bytes(4, byteorder="little")
+
+    data[section_offset + 20:section_offset + 24] = (
+        256
+    ).to_bytes(4, byteorder="little")
+
+    data[256:512] = b"A" * 256
+
+    file_path.write_bytes(data)
+
+    assert find_high_entropy_sections(
+        file_path
+    ) == {}
+
+
+def test_high_entropy_rejects_invalid_threshold(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "unused.exe"
+
+    with pytest.raises(
+        ValueError,
+        match="Entropy threshold must be between",
+    ):
+        find_high_entropy_sections(
+            file_path,
+            threshold=9.0,
+        )
