@@ -17,6 +17,8 @@ SECTION_HEADER_SIZE = 40
 IMAGE_SCN_MEM_EXECUTE = 0x20000000
 IMAGE_SCN_MEM_WRITE = 0x80000000
 HIGH_ENTROPY_THRESHOLD = 7.5
+PE32_MAGIC = 0x10B
+PE32_PLUS_MAGIC = 0x20B
 
 SUSPICIOUS_SECTION_NAMES = {
     "upx0",
@@ -392,3 +394,69 @@ def find_high_entropy_sections(
         for name, entropy in entropies.items()
         if entropy >= threshold
     }
+    
+def get_optional_header_magic(
+    file_path: str | Path,
+) -> int:
+    """
+    Read the magic value from a PE Optional Header.
+    """
+
+    if not validate_file(file_path):
+        raise ValueError("Invalid file path.")
+
+    path = Path(file_path).expanduser()
+    file_size = path.stat().st_size
+    header = parse_pe_header(path)
+
+    if header.size_of_optional_header < 2:
+        raise ValueError("Missing PE Optional Header.")
+
+    with path.open("rb") as file:
+        file.seek(0x3C)
+        offset_bytes = file.read(4)
+
+        if len(offset_bytes) != 4:
+            raise ValueError("Invalid PE file.")
+
+        pe_offset = int.from_bytes(
+            offset_bytes,
+            byteorder="little",
+        )
+
+        optional_header_offset = (
+            pe_offset
+            + 4
+            + COFF_HEADER_SIZE
+        )
+
+        if (
+            optional_header_offset > file_size
+            or 2 > file_size - optional_header_offset
+        ):
+            raise ValueError(
+                "Truncated PE Optional Header."
+            )
+
+        file.seek(optional_header_offset)
+        magic_bytes = file.read(2)
+
+    if len(magic_bytes) != 2:
+        raise ValueError(
+            "Truncated PE Optional Header."
+        )
+
+    magic = int.from_bytes(
+        magic_bytes,
+        byteorder="little",
+    )
+
+    if magic not in {
+        PE32_MAGIC,
+        PE32_PLUS_MAGIC,
+    }:
+        raise ValueError(
+            "Unsupported PE Optional Header magic."
+        )
+
+    return magic

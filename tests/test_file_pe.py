@@ -12,6 +12,7 @@ from ravshield.intel.file.pe import (
     calculate_entropy,
     calculate_section_entropies,
     find_high_entropy_sections,
+    get_optional_header_magic,
 )
 
 
@@ -675,3 +676,119 @@ def test_high_entropy_rejects_invalid_threshold(
             file_path,
             threshold=9.0,
         )
+        
+def test_get_optional_header_magic_detects_pe32(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "pe32.exe"
+
+    data = bytearray(256)
+
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(
+        4,
+        byteorder="little",
+    )
+
+    data[64:68] = b"PE\x00\x00"
+
+    coff_offset = 68
+
+    # Optional Header exists.
+    data[coff_offset + 16:coff_offset + 18] = (
+        224
+    ).to_bytes(2, byteorder="little")
+
+    optional_header_offset = 88
+
+    data[
+        optional_header_offset:
+        optional_header_offset + 2
+    ] = (0x10B).to_bytes(
+        2,
+        byteorder="little",
+    )
+
+    file_path.write_bytes(data)
+
+    assert get_optional_header_magic(
+        file_path
+    ) == 0x10B
+
+
+def test_get_optional_header_magic_detects_pe32_plus(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "pe32_plus.exe"
+
+    data = bytearray(256)
+
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(
+        4,
+        byteorder="little",
+    )
+
+    data[64:68] = b"PE\x00\x00"
+
+    coff_offset = 68
+
+    data[coff_offset + 16:coff_offset + 18] = (
+        240
+    ).to_bytes(2, byteorder="little")
+
+    optional_header_offset = 88
+
+    data[
+        optional_header_offset:
+        optional_header_offset + 2
+    ] = (0x20B).to_bytes(
+        2,
+        byteorder="little",
+    )
+
+    file_path.write_bytes(data)
+
+    assert get_optional_header_magic(
+        file_path
+    ) == 0x20B
+
+
+def test_get_optional_header_magic_rejects_unknown_magic(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "unknown.exe"
+
+    data = bytearray(256)
+
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(
+        4,
+        byteorder="little",
+    )
+
+    data[64:68] = b"PE\x00\x00"
+
+    coff_offset = 68
+
+    data[coff_offset + 16:coff_offset + 18] = (
+        224
+    ).to_bytes(2, byteorder="little")
+
+    optional_header_offset = 88
+
+    data[
+        optional_header_offset:
+        optional_header_offset + 2
+    ] = (0x999).to_bytes(
+        2,
+        byteorder="little",
+    )
+
+    file_path.write_bytes(data)
+
+    with pytest.raises(
+        ValueError,
+        match="Unsupported PE Optional Header magic",
+    ):
+        get_optional_header_magic(file_path)
