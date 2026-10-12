@@ -13,6 +13,7 @@ from ravshield.intel.file.pe import (
     calculate_section_entropies,
     find_high_entropy_sections,
     get_optional_header_magic,
+    get_import_directory,
 )
 
 
@@ -792,3 +793,73 @@ def test_get_optional_header_magic_rejects_unknown_magic(
         match="Unsupported PE Optional Header magic",
     ):
         get_optional_header_magic(file_path)
+    
+@pytest.mark.parametrize(
+    "magic,optional_size,directory_offset",
+    [
+        (0x10B, 224, 104),  # PE32
+        (0x20B, 240, 120),  # PE32+
+    ],
+)
+def test_get_import_directory_reads_rva_and_size(
+    tmp_path: Path,
+    magic: int,
+    optional_size: int,
+    directory_offset: int,
+):
+    file_path = tmp_path / "imports.exe"
+    data = bytearray(512)
+
+    # DOS and PE headers
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(4, "little")
+    data[64:68] = b"PE\x00\x00"
+
+    # COFF SizeOfOptionalHeader
+    data[84:86] = optional_size.to_bytes(2, "little")
+
+    optional_offset = 88
+    data[optional_offset:optional_offset + 2] = (
+        magic.to_bytes(2, "little")
+    )
+
+    # Import directory entry
+    entry_offset = optional_offset + directory_offset
+
+    data[entry_offset:entry_offset + 4] = (
+        0x3000
+    ).to_bytes(4, "little")
+
+    data[entry_offset + 4:entry_offset + 8] = (
+        128
+    ).to_bytes(4, "little")
+
+    file_path.write_bytes(data)
+
+    directory = get_import_directory(file_path)
+
+    assert directory.rva == 0x3000
+    assert directory.size == 128
+
+
+def test_get_import_directory_rejects_truncated_optional_header(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "truncated.exe"
+    data = bytearray(128)
+
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(4, "little")
+    data[64:68] = b"PE\x00\x00"
+
+    # Claims 224 optional-header bytes, but file is too short.
+    data[84:86] = (224).to_bytes(2, "little")
+    data[88:90] = (0x10B).to_bytes(2, "little")
+
+    file_path.write_bytes(data)
+
+    with pytest.raises(
+        ValueError,
+        match="Truncated PE Optional Header",
+    ):
+        get_import_directory(file_path)
