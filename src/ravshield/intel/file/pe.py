@@ -59,6 +59,14 @@ class PESection:
 class PEDataDirectory:
     rva: int
     size: int
+    
+@dataclass(frozen=True)
+class PEImportDescriptor:
+    original_first_thunk: int
+    time_date_stamp: int
+    forwarder_chain: int
+    name_rva: int
+    first_thunk: int
 
 
 def has_pe_signature(
@@ -568,3 +576,66 @@ def rva_to_file_offset(
             return file_offset
 
     raise ValueError("RVA is not mapped to raw section data.")
+
+
+def parse_import_descriptors(
+    file_path: str | Path,
+) -> list[PEImportDescriptor]:
+    """
+    Parse PE import directory descriptors.
+    """
+
+    import_directory = get_import_directory(file_path)
+
+    if import_directory.rva == 0 or import_directory.size == 0:
+        return []
+
+    file_path = Path(file_path).expanduser()
+    file_size = file_path.stat().st_size
+
+    descriptor_offset = rva_to_file_offset(
+        file_path,
+        import_directory.rva,
+    )
+
+    descriptor_size = 20
+    max_descriptors = min(
+        import_directory.size // descriptor_size,
+        4096,
+    )
+
+    descriptors = []
+
+    with file_path.open("rb") as file:
+        for index in range(max_descriptors):
+            offset = descriptor_offset + index * descriptor_size
+
+            if offset + descriptor_size > file_size:
+                raise ValueError("Import descriptor exceeds file bounds.")
+
+            file.seek(offset)
+            data = file.read(descriptor_size)
+
+            if len(data) != descriptor_size:
+                raise ValueError("Truncated PE import descriptor.")
+
+            values = [
+                int.from_bytes(data[i:i + 4], "little")
+                for i in range(0, descriptor_size, 4)
+            ]
+
+            if all(value == 0 for value in values):
+                break
+
+            descriptors.append(
+                PEImportDescriptor(
+                    original_first_thunk=values[0],
+                    time_date_stamp=values[1],
+                    forwarder_chain=values[2],
+                    name_rva=values[3],
+                    first_thunk=values[4],
+                )
+            )
+
+    return descriptors
+
