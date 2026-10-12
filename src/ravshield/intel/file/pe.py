@@ -19,6 +19,11 @@ IMAGE_SCN_MEM_WRITE = 0x80000000
 HIGH_ENTROPY_THRESHOLD = 7.5
 PE32_MAGIC = 0x10B
 PE32_PLUS_MAGIC = 0x20B
+IMPORT_DIRECTORY_INDEX = 1
+DATA_DIRECTORY_SIZE = 8
+
+PE32_DATA_DIRECTORY_OFFSET = 96
+PE32_PLUS_DATA_DIRECTORY_OFFSET = 112
 
 SUSPICIOUS_SECTION_NAMES = {
     "upx0",
@@ -49,6 +54,11 @@ class PESection:
     raw_data_size: int
     raw_data_pointer: int
     characteristics: int
+    
+@dataclass(slots=True)
+class PEDataDirectory:
+    rva: int
+    size: int
 
 
 def has_pe_signature(
@@ -460,3 +470,71 @@ def get_optional_header_magic(
         )
 
     return magic
+
+def get_import_directory(
+    file_path: str | Path,
+) -> PEDataDirectory:
+    """
+    Read the import data directory from a PE file.
+    """
+
+    if not validate_file(file_path):
+        raise ValueError("Invalid file path.")
+
+    path = Path(file_path).expanduser()
+    file_size = path.stat().st_size
+
+    header = parse_pe_header(path)
+    magic = get_optional_header_magic(path)
+
+    directory_start = (
+        PE32_DATA_DIRECTORY_OFFSET
+        if magic == PE32_MAGIC
+        else PE32_PLUS_DATA_DIRECTORY_OFFSET
+    )
+
+    directory_end = (
+        directory_start
+        + (IMPORT_DIRECTORY_INDEX + 1) * DATA_DIRECTORY_SIZE
+    )
+
+    if header.size_of_optional_header < directory_end:
+        raise ValueError(
+            "PE Optional Header is too small for import directory."
+        )
+
+    with path.open("rb") as file:
+        file.seek(0x3C)
+        pe_offset = int.from_bytes(
+            file.read(4),
+            byteorder="little",
+        )
+
+        optional_header_offset = (
+            pe_offset + 4 + COFF_HEADER_SIZE
+        )
+
+        if (
+            optional_header_offset > file_size
+            or header.size_of_optional_header
+            > file_size - optional_header_offset
+        ):
+            raise ValueError(
+                "Truncated PE Optional Header."
+            )
+
+        file.seek(
+            optional_header_offset
+            + directory_start
+            + IMPORT_DIRECTORY_INDEX * DATA_DIRECTORY_SIZE
+        )
+
+        raw_directory = file.read(DATA_DIRECTORY_SIZE)
+
+    if len(raw_directory) != DATA_DIRECTORY_SIZE:
+        raise ValueError("Truncated PE import directory.")
+
+    return PEDataDirectory(
+        rva=int.from_bytes(raw_directory[0:4], "little"),
+        size=int.from_bytes(raw_directory[4:8], "little"),
+    )
