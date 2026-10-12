@@ -14,6 +14,7 @@ from ravshield.intel.file.pe import (
     find_high_entropy_sections,
     get_optional_header_magic,
     get_import_directory,
+    rva_to_file_offset,
 )
 
 
@@ -863,3 +864,83 @@ def test_get_import_directory_rejects_truncated_optional_header(
         match="Truncated PE Optional Header",
     ):
         get_import_directory(file_path)
+        
+
+@pytest.mark.parametrize(
+    "rva,expected_offset",
+    [
+        (0x3000, 0x200),
+        (0x3020, 0x220),
+        (0x30FF, 0x2FF),
+    ],
+)
+def test_rva_to_file_offset(
+    tmp_path: Path,
+    rva: int,
+    expected_offset: int,
+):
+    file_path = tmp_path / "rva.exe"
+    data = bytearray(1024)
+
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(4, "little")
+    data[64:68] = b"PE\x00\x00"
+
+    # One section, no Optional Header.
+    data[70:72] = (1).to_bytes(2, "little")
+    data[84:86] = (0).to_bytes(2, "little")
+
+    # Section header begins at offset 88.
+    section_offset = 88
+
+    data[section_offset:section_offset + 8] = b".text\x00\x00\x00"
+    data[section_offset + 8:section_offset + 12] = (
+        0x100
+    ).to_bytes(4, "little")
+    data[section_offset + 12:section_offset + 16] = (
+        0x3000
+    ).to_bytes(4, "little")
+    data[section_offset + 16:section_offset + 20] = (
+        0x100
+    ).to_bytes(4, "little")
+    data[section_offset + 20:section_offset + 24] = (
+        0x200
+    ).to_bytes(4, "little")
+
+    file_path.write_bytes(data)
+
+    assert rva_to_file_offset(file_path, rva) == expected_offset
+
+
+@pytest.mark.parametrize("invalid_rva", [-1, "3000", True])
+def test_rva_to_file_offset_rejects_invalid_input(
+    tmp_path: Path,
+    invalid_rva,
+):
+    file_path = tmp_path / "invalid.exe"
+    file_path.write_bytes(b"MZ")
+
+    with pytest.raises(
+        ValueError,
+        match="RVA must be a non-negative integer",
+    ):
+        rva_to_file_offset(file_path, invalid_rva)
+
+
+def test_rva_to_file_offset_rejects_unmapped_rva(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "unmapped.exe"
+    data = bytearray(256)
+
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(4, "little")
+    data[64:68] = b"PE\x00\x00"
+
+    file_path.write_bytes(data)
+
+    with pytest.raises(
+        ValueError,
+        match="RVA is not mapped",
+    ):
+        rva_to_file_offset(file_path, 0x9000)
