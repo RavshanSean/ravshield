@@ -1254,3 +1254,95 @@ def test_get_imported_dll_names_empty_directory(
     file_path.write_bytes(data)
 
     assert get_imported_dll_names(file_path) == []
+
+
+@pytest.mark.parametrize(
+    "string_data,error_message",
+    [
+        (b"\xff\x00", "non-ASCII"),
+        (b"A" * 256, "not null-terminated"),
+    ],
+)
+def test_read_pe_string_rejects_invalid_strings(
+    tmp_path: Path,
+    string_data: bytes,
+    error_message: str,
+):
+    file_path = tmp_path / "invalid_dll_string.exe"
+    data = bytearray(1024)
+
+    # DOS and PE headers.
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(4, "little")
+    data[64:68] = b"PE\x00\x00"
+
+    # One section, no optional header.
+    data[70:72] = (1).to_bytes(2, "little")
+    data[84:86] = (0).to_bytes(2, "little")
+
+    # Section header starts at offset 88.
+    section_offset = 88
+
+    data[section_offset:section_offset + 8] = b".idata\x00\x00"
+
+    data[section_offset + 8:section_offset + 12] = (
+        0x200
+    ).to_bytes(4, "little")
+    data[section_offset + 12:section_offset + 16] = (
+        0x3000
+    ).to_bytes(4, "little")
+    data[section_offset + 16:section_offset + 20] = (
+        0x200
+    ).to_bytes(4, "little")
+    data[section_offset + 20:section_offset + 24] = (
+        0x200
+    ).to_bytes(4, "little")
+
+    # Write test string at RVA 0x3000.
+    data[0x200:0x200 + len(string_data)] = string_data
+
+    file_path.write_bytes(data)
+
+    with pytest.raises(ValueError, match=error_message):
+        read_pe_string(file_path, 0x3000)
+
+
+def test_read_pe_string_rejects_section_boundary(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "boundary_string.exe"
+    data = bytearray(1024)
+
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(4, "little")
+    data[64:68] = b"PE\x00\x00"
+
+    data[70:72] = (1).to_bytes(2, "little")
+    data[84:86] = (0).to_bytes(2, "little")
+
+    section_offset = 88
+
+    data[section_offset:section_offset + 8] = b".idata\x00\x00"
+    data[section_offset + 8:section_offset + 12] = (
+        0x10
+    ).to_bytes(4, "little")
+    data[section_offset + 12:section_offset + 16] = (
+        0x3000
+    ).to_bytes(4, "little")
+    data[section_offset + 16:section_offset + 20] = (
+        0x10
+    ).to_bytes(4, "little")
+    data[section_offset + 20:section_offset + 24] = (
+        0x200
+    ).to_bytes(4, "little")
+
+    # Fill the entire section without a null terminator.
+    data[0x200:0x210] = b"A" * 16
+
+    # Null byte exists outside the section, but must not be read.
+    data[0x210] = 0
+
+    file_path.write_bytes(data)
+
+    with pytest.raises(ValueError, match="not null-terminated"):
+        read_pe_string(file_path, 0x3000)
