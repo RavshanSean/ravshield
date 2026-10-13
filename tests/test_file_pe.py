@@ -1067,3 +1067,96 @@ def test_parse_import_descriptors_empty_directory(
 
     assert parse_import_descriptors(file_path) == []
 
+
+def test_import_directory_rejects_invalid_size(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "invalid_size.exe"
+    data = bytearray(1024)
+
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(4, "little")
+    data[64:68] = b"PE\x00\x00"
+
+    data[70:72] = (1).to_bytes(2, "little")
+    data[84:86] = (224).to_bytes(2, "little")
+
+    optional_offset = 88
+    data[optional_offset:optional_offset + 2] = (
+        0x10B
+    ).to_bytes(2, "little")
+
+    import_offset = optional_offset + 96 + 8
+    data[import_offset:import_offset + 4] = (
+        0x3000
+    ).to_bytes(4, "little")
+
+    # Invalid size: not divisible by 20.
+    data[import_offset + 4:import_offset + 8] = (
+        21
+    ).to_bytes(4, "little")
+
+    section_offset = optional_offset + 224
+    data[section_offset:section_offset + 8] = b".idata\x00\x00"
+    data[section_offset + 12:section_offset + 16] = (
+        0x3000
+    ).to_bytes(4, "little")
+    data[section_offset + 16:section_offset + 20] = (
+        0x200
+    ).to_bytes(4, "little")
+    data[section_offset + 20:section_offset + 24] = (
+        0x200
+    ).to_bytes(4, "little")
+
+    file_path.write_bytes(data)
+
+    with pytest.raises(ValueError, match="invalid size"):
+        parse_import_descriptors(file_path)
+
+
+def test_import_directory_rejects_missing_terminator(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "missing_terminator.exe"
+    data = bytearray(1024)
+
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(4, "little")
+    data[64:68] = b"PE\x00\x00"
+
+    data[70:72] = (1).to_bytes(2, "little")
+    data[84:86] = (224).to_bytes(2, "little")
+
+    optional_offset = 88
+    data[optional_offset:optional_offset + 2] = (
+        0x10B
+    ).to_bytes(2, "little")
+
+    import_offset = optional_offset + 96 + 8
+    data[import_offset:import_offset + 4] = (
+        0x3000
+    ).to_bytes(4, "little")
+    data[import_offset + 4:import_offset + 8] = (
+        20
+    ).to_bytes(4, "little")
+
+    section_offset = optional_offset + 224
+    data[section_offset:section_offset + 8] = b".idata\x00\x00"
+    data[section_offset + 12:section_offset + 16] = (
+        0x3000
+    ).to_bytes(4, "little")
+    data[section_offset + 16:section_offset + 20] = (
+        0x200
+    ).to_bytes(4, "little")
+    data[section_offset + 20:section_offset + 24] = (
+        0x200
+    ).to_bytes(4, "little")
+
+    # Non-zero descriptor without a null terminator.
+    data[0x200:0x204] = (0x3050).to_bytes(4, "little")
+
+    file_path.write_bytes(data)
+
+    with pytest.raises(ValueError, match="no null terminator"):
+        parse_import_descriptors(file_path)
+

@@ -599,12 +599,45 @@ def parse_import_descriptors(
     )
 
     descriptor_size = 20
+
+    if import_directory.size < descriptor_size:
+        raise ValueError("Import directory is too small.")
+
+    if import_directory.size % descriptor_size != 0:
+        raise ValueError("Import directory has an invalid size.")
+
     max_descriptors = min(
         import_directory.size // descriptor_size,
         4096,
     )
 
+    sections = parse_pe_sections(file_path)
+
+    matching_section = next(
+        (
+            section
+            for section in sections
+            if section.virtual_address <= import_directory.rva
+            < section.virtual_address + section.raw_data_size
+        ),
+        None,
+    )
+
+    if matching_section is None:
+        raise ValueError("Import directory is not mapped to a section.")
+
+    section_end = (
+        matching_section.raw_data_pointer
+        + matching_section.raw_data_size
+    )
+
+    directory_end = descriptor_offset + import_directory.size
+
+    if directory_end > section_end or directory_end > file_size:
+        raise ValueError("Import directory exceeds section or file bounds.")
+
     descriptors = []
+    found_terminator = False
 
     with file_path.open("rb") as file:
         for index in range(max_descriptors):
@@ -625,6 +658,7 @@ def parse_import_descriptors(
             ]
 
             if all(value == 0 for value in values):
+                found_terminator = True
                 break
 
             descriptors.append(
@@ -636,6 +670,9 @@ def parse_import_descriptors(
                     first_thunk=values[4],
                 )
             )
+            
+    if not found_terminator:
+        raise ValueError("Import directory has no null terminator.")
 
     return descriptors
 
