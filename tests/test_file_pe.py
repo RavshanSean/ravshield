@@ -15,6 +15,8 @@ from ravshield.intel.file.pe import (
     get_optional_header_magic,
     get_import_directory,
     rva_to_file_offset,
+    PEImportDescriptor,
+    parse_import_descriptors,
 )
 
 
@@ -944,3 +946,124 @@ def test_rva_to_file_offset_rejects_unmapped_rva(
         match="RVA is not mapped",
     ):
         rva_to_file_offset(file_path, 0x9000)
+        
+
+def test_parse_import_descriptors(tmp_path: Path):
+    file_path = tmp_path / "imports.exe"
+    data = bytearray(1024)
+
+    # DOS and PE headers.
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(4, "little")
+    data[64:68] = b"PE\x00\x00"
+
+    # COFF header: one section, 224-byte optional header.
+    data[70:72] = (1).to_bytes(2, "little")
+    data[84:86] = (224).to_bytes(2, "little")
+
+    # PE32 optional header.
+    optional_offset = 88
+    data[optional_offset:optional_offset + 2] = (
+        0x10B
+    ).to_bytes(2, "little")
+
+    # NumberOfRvaAndSizes = 16.
+    data[optional_offset + 92:optional_offset + 96] = (
+        16
+    ).to_bytes(4, "little")
+
+    # Import directory: RVA 0x3000, size 40.
+    import_offset = optional_offset + 96 + 8
+    data[import_offset:import_offset + 4] = (
+        0x3000
+    ).to_bytes(4, "little")
+    data[import_offset + 4:import_offset + 8] = (
+        40
+    ).to_bytes(4, "little")
+
+    # Section header.
+    section_offset = optional_offset + 224
+    data[section_offset:section_offset + 8] = b".idata\x00\x00"
+    data[section_offset + 8:section_offset + 12] = (
+        0x200
+    ).to_bytes(4, "little")
+    data[section_offset + 12:section_offset + 16] = (
+        0x3000
+    ).to_bytes(4, "little")
+    data[section_offset + 16:section_offset + 20] = (
+        0x200
+    ).to_bytes(4, "little")
+    data[section_offset + 20:section_offset + 24] = (
+        0x200
+    ).to_bytes(4, "little")
+
+    # First import descriptor.
+    fields = [0x3050, 0, 0, 0x3080, 0x3060]
+
+    for index, value in enumerate(fields):
+        start = 0x200 + index * 4
+        data[start:start + 4] = value.to_bytes(4, "little")
+
+    # Remaining 20 bytes are the null terminator.
+    file_path.write_bytes(data)
+
+    descriptors = parse_import_descriptors(file_path)
+
+    assert len(descriptors) == 1
+    assert isinstance(descriptors[0], PEImportDescriptor)
+    assert descriptors[0].name_rva == 0x3080
+    assert descriptors[0].first_thunk == 0x3060
+
+
+def test_parse_import_descriptors_rejects_invalid_rva(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "invalid_import.exe"
+    data = bytearray(512)
+
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(4, "little")
+    data[64:68] = b"PE\x00\x00"
+
+    data[84:86] = (224).to_bytes(2, "little")
+
+    optional_offset = 88
+    data[optional_offset:optional_offset + 2] = (
+        0x10B
+    ).to_bytes(2, "little")
+
+    # Import directory points to an unmapped RVA.
+    import_offset = optional_offset + 96 + 8
+    data[import_offset:import_offset + 4] = (
+        0x9000
+    ).to_bytes(4, "little")
+    data[import_offset + 4:import_offset + 8] = (
+        40
+    ).to_bytes(4, "little")
+
+    file_path.write_bytes(data)
+
+    with pytest.raises(ValueError, match="RVA is not mapped"):
+        parse_import_descriptors(file_path)
+
+
+def test_parse_import_descriptors_empty_directory(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "empty_import.exe"
+    data = bytearray(512)
+
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(4, "little")
+    data[64:68] = b"PE\x00\x00"
+    data[84:86] = (224).to_bytes(2, "little")
+
+    optional_offset = 88
+    data[optional_offset:optional_offset + 2] = (
+        0x10B
+    ).to_bytes(2, "little")
+
+    file_path.write_bytes(data)
+
+    assert parse_import_descriptors(file_path) == []
+
