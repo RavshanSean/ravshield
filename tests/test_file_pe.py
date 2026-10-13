@@ -17,6 +17,8 @@ from ravshield.intel.file.pe import (
     rva_to_file_offset,
     PEImportDescriptor,
     parse_import_descriptors,
+    read_pe_string,
+    get_imported_dll_names,
 )
 
 
@@ -1160,3 +1162,95 @@ def test_import_directory_rejects_missing_terminator(
     with pytest.raises(ValueError, match="no null terminator"):
         parse_import_descriptors(file_path)
 
+
+def test_get_imported_dll_names(tmp_path: Path):
+    file_path = tmp_path / "dll_imports.exe"
+    data = bytearray(1024)
+
+    # DOS and PE headers.
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(4, "little")
+    data[64:68] = b"PE\x00\x00"
+
+    # One section and PE32 optional header.
+    data[70:72] = (1).to_bytes(2, "little")
+    data[84:86] = (224).to_bytes(2, "little")
+
+    optional_offset = 88
+    data[optional_offset:optional_offset + 2] = (
+        0x10B
+    ).to_bytes(2, "little")
+
+    # Import directory: RVA 0x3000, size 40.
+    import_offset = optional_offset + 96 + 8
+    data[import_offset:import_offset + 4] = (
+        0x3000
+    ).to_bytes(4, "little")
+    data[import_offset + 4:import_offset + 8] = (
+        40
+    ).to_bytes(4, "little")
+
+    # Section header.
+    section_offset = optional_offset + 224
+    data[section_offset:section_offset + 8] = b".idata\x00\x00"
+
+    data[section_offset + 8:section_offset + 12] = (
+        0x200
+    ).to_bytes(4, "little")
+    data[section_offset + 12:section_offset + 16] = (
+        0x3000
+    ).to_bytes(4, "little")
+    data[section_offset + 16:section_offset + 20] = (
+        0x200
+    ).to_bytes(4, "little")
+    data[section_offset + 20:section_offset + 24] = (
+        0x200
+    ).to_bytes(4, "little")
+
+    # Import descriptor: Name RVA = 0x3080.
+    data[0x200 + 12:0x200 + 16] = (
+        0x3080
+    ).to_bytes(4, "little")
+
+    # DLL name at file offset 0x280.
+    data[0x280:0x280 + len(b"KERNEL32.dll\x00")] = (
+        b"KERNEL32.dll\x00"
+    )
+
+    file_path.write_bytes(data)
+
+    assert get_imported_dll_names(file_path) == ["KERNEL32.dll"]
+    assert read_pe_string(file_path, 0x3080) == "KERNEL32.dll"
+
+
+def test_read_pe_string_rejects_invalid_length(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "invalid_length.exe"
+
+    with pytest.raises(ValueError, match="max_length"):
+        read_pe_string(file_path, 0x3000, max_length=0)
+
+    with pytest.raises(ValueError, match="max_length"):
+        read_pe_string(file_path, 0x3000, max_length=5000)
+
+
+def test_get_imported_dll_names_empty_directory(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "empty_dll_imports.exe"
+    data = bytearray(512)
+
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(4, "little")
+    data[64:68] = b"PE\x00\x00"
+    data[84:86] = (224).to_bytes(2, "little")
+
+    optional_offset = 88
+    data[optional_offset:optional_offset + 2] = (
+        0x10B
+    ).to_bytes(2, "little")
+
+    file_path.write_bytes(data)
+
+    assert get_imported_dll_names(file_path) == []

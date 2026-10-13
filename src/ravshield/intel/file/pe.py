@@ -676,3 +676,92 @@ def parse_import_descriptors(
 
     return descriptors
 
+
+def read_pe_string(
+    file_path: str | Path,
+    rva: int,
+    max_length: int = 256,
+) -> str:
+    """
+    Read a null-terminated ASCII string from a PE RVA.
+    """
+
+    if not isinstance(max_length, int) or isinstance(max_length, bool):
+        raise ValueError("max_length must be a positive integer.")
+
+    if max_length <= 0 or max_length > 4096:
+        raise ValueError("max_length must be between 1 and 4096.")
+
+    file_path = Path(file_path).expanduser()
+    file_size = file_path.stat().st_size
+
+    offset = rva_to_file_offset(file_path, rva)
+
+    sections = parse_pe_sections(file_path)
+
+    matching_section = next(
+        (
+            section
+            for section in sections
+            if section.virtual_address <= rva
+            < section.virtual_address + section.raw_data_size
+        ),
+        None,
+    )
+
+    if matching_section is None:
+        raise ValueError("String RVA is not mapped to a section.")
+
+    section_end = (
+        matching_section.raw_data_pointer
+        + matching_section.raw_data_size
+    )
+
+    available_bytes = min(
+        max_length,
+        section_end - offset,
+        file_size - offset,
+    )
+
+    with file_path.open("rb") as file:
+        file.seek(offset)
+        data = file.read(available_bytes)
+
+    null_position = data.find(b"\x00")
+
+    if null_position == -1:
+        raise ValueError("PE string is not null-terminated.")
+
+    try:
+        return data[:null_position].decode("ascii")
+    except UnicodeDecodeError as exc:
+        raise ValueError("PE string contains non-ASCII bytes.") from exc
+
+
+def get_imported_dll_names(
+    file_path: str | Path,
+) -> list[str]:
+    """
+    Extract imported DLL names from a PE file.
+    """
+
+    descriptors = parse_import_descriptors(file_path)
+    dll_names = []
+
+    for descriptor in descriptors:
+        if descriptor.name_rva == 0:
+            raise ValueError("Import descriptor has no DLL name RVA.")
+
+        dll_name = read_pe_string(
+            file_path,
+            descriptor.name_rva,
+        )
+
+        if not dll_name:
+            raise ValueError("Import descriptor has an empty DLL name.")
+
+        dll_names.append(dll_name)
+
+    return dll_names
+
+
