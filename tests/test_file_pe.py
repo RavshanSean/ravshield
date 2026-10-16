@@ -21,6 +21,7 @@ from ravshield.intel.file.pe import (
     get_imported_dll_names,
     get_import_thunk_rvas,
     get_imported_api_names,
+    analyze_pe_imports,
 )
 
 
@@ -1798,3 +1799,91 @@ def test_imported_api_rejects_invalid_entries(
 
     with pytest.raises(ValueError, match=error_message):
         get_imported_api_names(file_path, descriptor)
+
+
+def test_analyze_pe_imports_combines_dlls_and_apis(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "imports.exe"
+    data = bytearray(1024)
+
+    # DOS and PE headers.
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(4, "little")
+    data[64:68] = b"PE\x00\x00"
+
+    # COFF header.
+    data[70:72] = (1).to_bytes(2, "little")
+    data[84:86] = (224).to_bytes(2, "little")
+
+    optional_offset = 88
+    data[optional_offset:optional_offset + 2] = (
+        0x10B
+    ).to_bytes(2, "little")
+
+    # Number of RVA and Sizes.
+    data[optional_offset + 92:optional_offset + 96] = (
+        16
+    ).to_bytes(4, "little")
+
+    # Import directory: RVA 0x3000, size 40.
+    directory_offset = optional_offset + 96 + 8
+    data[directory_offset:directory_offset + 4] = (
+        0x3000
+    ).to_bytes(4, "little")
+    data[directory_offset + 4:directory_offset + 8] = (
+        40
+    ).to_bytes(4, "little")
+
+    # .idata section.
+    section_offset = optional_offset + 224
+    data[section_offset:section_offset + 8] = b".idata\x00\x00"
+
+    data[section_offset + 8:section_offset + 12] = (
+        0x200
+    ).to_bytes(4, "little")
+    data[section_offset + 12:section_offset + 16] = (
+        0x3000
+    ).to_bytes(4, "little")
+    data[section_offset + 16:section_offset + 20] = (
+        0x200
+    ).to_bytes(4, "little")
+    data[section_offset + 20:section_offset + 24] = (
+        0x200
+    ).to_bytes(4, "little")
+
+    # Import descriptor at RVA 0x3000.
+    # OriginalFirstThunk = 0x3040.
+    data[0x200:0x204] = (0x3040).to_bytes(4, "little")
+
+    # Name RVA = 0x30C0.
+    data[0x20C:0x210] = (0x30C0).to_bytes(4, "little")
+
+    # FirstThunk = 0x3040.
+    data[0x210:0x214] = (0x3040).to_bytes(4, "little")
+
+    # Second descriptor is all zeros (terminator).
+
+    # Import thunk table.
+    data[0x240:0x244] = (0x3080).to_bytes(4, "little")
+    data[0x244:0x248] = (0x30A0).to_bytes(4, "little")
+    data[0x248:0x24C] = (0).to_bytes(4, "little")
+
+    # Imported API names: hint + name + null.
+    data[0x280:0x282] = (0).to_bytes(2, "little")
+    data[0x282:0x28F] = b"VirtualAlloc\x00"
+
+    data[0x2A0:0x2A2] = (0).to_bytes(2, "little")
+    data[0x2A2:0x2AE] = b"CreateFileW\x00"
+
+    # DLL name.
+    data[0x2C0:0x2CD] = b"KERNEL32.dll\x00"
+
+    file_path.write_bytes(data)
+
+    assert analyze_pe_imports(file_path) == {
+        "KERNEL32.dll": [
+            "VirtualAlloc",
+            "CreateFileW",
+        ],
+    }
