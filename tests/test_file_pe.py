@@ -1719,3 +1719,82 @@ def test_get_imported_api_names(
         "CreateFileW",
         "#123",
     ]
+
+
+@pytest.mark.parametrize(
+    "api_rva,ordinal_value,error_message",
+    [
+        (0, None, "Invalid ordinal import"),
+        (0x5000, None, "RVA"),
+        (None, 0x80010001, "Invalid ordinal import"),
+        (None, 0x80000000, "Invalid ordinal import"),
+    ],
+)
+def test_imported_api_rejects_invalid_entries(
+    tmp_path: Path,
+    api_rva: int | None,
+    ordinal_value: int | None,
+    error_message: str,
+):
+    file_path = tmp_path / "invalid_api.exe"
+    data = bytearray(1024)
+
+    # DOS and PE headers.
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(4, "little")
+    data[64:68] = b"PE\x00\x00"
+
+    # COFF header: one section, PE32 optional header.
+    data[70:72] = (1).to_bytes(2, "little")
+    data[84:86] = (224).to_bytes(2, "little")
+
+    optional_offset = 88
+    data[optional_offset:optional_offset + 2] = (
+        0x10B
+    ).to_bytes(2, "little")
+
+    # .idata section.
+    section_offset = optional_offset + 224
+    data[section_offset:section_offset + 8] = b".idata\x00\x00"
+
+    data[section_offset + 8:section_offset + 12] = (
+        0x200
+    ).to_bytes(4, "little")
+    data[section_offset + 12:section_offset + 16] = (
+        0x3000
+    ).to_bytes(4, "little")
+    data[section_offset + 16:section_offset + 20] = (
+        0x200
+    ).to_bytes(4, "little")
+    data[section_offset + 20:section_offset + 24] = (
+        0x200
+    ).to_bytes(4, "little")
+
+    # Thunk table at RVA 0x3040.
+    thunk_value = (
+        ordinal_value
+        if ordinal_value is not None
+        else api_rva
+    )
+
+    # The first test case uses a nonzero thunk so it
+    # reaches API-name validation rather than ending
+    # the thunk table.
+    if thunk_value == 0:
+        thunk_value = 0x80000000
+
+    data[0x240:0x244] = thunk_value.to_bytes(4, "little")
+    data[0x244:0x248] = (0).to_bytes(4, "little")
+
+    file_path.write_bytes(data)
+
+    descriptor = PEImportDescriptor(
+        original_first_thunk=0x3040,
+        time_date_stamp=0,
+        forwarder_chain=0,
+        name_rva=0,
+        first_thunk=0,
+    )
+
+    with pytest.raises(ValueError, match=error_message):
+        get_imported_api_names(file_path, descriptor)
