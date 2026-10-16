@@ -1346,3 +1346,58 @@ def test_read_pe_string_rejects_section_boundary(
 
     with pytest.raises(ValueError, match="not null-terminated"):
         read_pe_string(file_path, 0x3000)
+
+
+def test_import_directory_rejects_section_overflow(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "section_overflow.exe"
+    data = bytearray(1024)
+
+    # DOS and PE headers.
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(4, "little")
+    data[64:68] = b"PE\x00\x00"
+
+    # One section and PE32 optional header.
+    data[70:72] = (1).to_bytes(2, "little")
+    data[84:86] = (224).to_bytes(2, "little")
+
+    optional_offset = 88
+    data[optional_offset:optional_offset + 2] = (
+        0x10B
+    ).to_bytes(2, "little")
+
+    # Import directory: RVA 0x3000, size 40 bytes.
+    import_offset = optional_offset + 96 + 8
+    data[import_offset:import_offset + 4] = (
+        0x3000
+    ).to_bytes(4, "little")
+    data[import_offset + 4:import_offset + 8] = (
+        40
+    ).to_bytes(4, "little")
+
+    # Section contains only 20 raw bytes.
+    section_offset = optional_offset + 224
+    data[section_offset:section_offset + 8] = b".idata\x00\x00"
+
+    data[section_offset + 8:section_offset + 12] = (
+        0x20
+    ).to_bytes(4, "little")
+    data[section_offset + 12:section_offset + 16] = (
+        0x3000
+    ).to_bytes(4, "little")
+    data[section_offset + 16:section_offset + 20] = (
+        20
+    ).to_bytes(4, "little")
+    data[section_offset + 20:section_offset + 24] = (
+        0x200
+    ).to_bytes(4, "little")
+
+    file_path.write_bytes(data)
+
+    with pytest.raises(
+        ValueError,
+        match="Import directory exceeds section or file bounds",
+    ):
+        parse_import_descriptors(file_path)
