@@ -20,6 +20,7 @@ from ravshield.intel.file.pe import (
     read_pe_string,
     get_imported_dll_names,
     get_import_thunk_rvas,
+    get_imported_api_names,
 )
 
 
@@ -1626,3 +1627,95 @@ def test_import_thunk_rejects_missing_terminator_at_limit(
             descriptor,
             max_imports=2,
         )
+
+
+@pytest.mark.parametrize(
+    "magic,optional_size,entry_size",
+    [
+        (0x10B, 224, 4),
+        (0x20B, 240, 8),
+    ],
+)
+def test_get_imported_api_names(
+    tmp_path: Path,
+    magic: int,
+    optional_size: int,
+    entry_size: int,
+):
+    file_path = tmp_path / "api_imports.exe"
+    data = bytearray(1024)
+
+    # DOS and PE headers.
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(4, "little")
+    data[64:68] = b"PE\x00\x00"
+
+    # COFF header.
+    data[70:72] = (1).to_bytes(2, "little")
+    data[84:86] = optional_size.to_bytes(2, "little")
+
+    # Optional header.
+    optional_offset = 88
+    data[optional_offset:optional_offset + 2] = (
+        magic.to_bytes(2, "little")
+    )
+
+    # .idata section.
+    section_offset = optional_offset + optional_size
+    data[section_offset:section_offset + 8] = b".idata\x00\x00"
+
+    data[section_offset + 8:section_offset + 12] = (
+        0x200
+    ).to_bytes(4, "little")
+    data[section_offset + 12:section_offset + 16] = (
+        0x3000
+    ).to_bytes(4, "little")
+    data[section_offset + 16:section_offset + 20] = (
+        0x200
+    ).to_bytes(4, "little")
+    data[section_offset + 20:section_offset + 24] = (
+        0x200
+    ).to_bytes(4, "little")
+
+    # Import thunk table at RVA 0x3040.
+    ordinal_flag = 1 << (entry_size * 8 - 1)
+
+    thunk_values = [
+        0x3080,
+        0x30A0,
+        ordinal_flag | 123,
+        0,
+    ]
+
+    for index, value in enumerate(thunk_values):
+        start = 0x240 + index * entry_size
+        data[start:start + entry_size] = value.to_bytes(
+            entry_size,
+            "little",
+        )
+
+    # IMAGE_IMPORT_BY_NAME: 2-byte hint + API name + null.
+    data[0x280:0x282] = (0).to_bytes(2, "little")
+    data[0x282:0x28F] = b"VirtualAlloc\x00"
+
+    data[0x2A0:0x2A2] = (0).to_bytes(2, "little")
+    data[0x2A2:0x2AE] = b"CreateFileW\x00"
+
+    file_path.write_bytes(data)
+
+    descriptor = PEImportDescriptor(
+        original_first_thunk=0x3040,
+        time_date_stamp=0,
+        forwarder_chain=0,
+        name_rva=0,
+        first_thunk=0,
+    )
+
+    assert get_imported_api_names(
+        file_path,
+        descriptor,
+    ) == [
+        "VirtualAlloc",
+        "CreateFileW",
+        "#123",
+    ]
