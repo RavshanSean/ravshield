@@ -19,6 +19,7 @@ from ravshield.intel.file.pe import (
     parse_import_descriptors,
     read_pe_string,
     get_imported_dll_names,
+    get_import_thunk_rvas,
 )
 
 
@@ -1401,3 +1402,101 @@ def test_import_directory_rejects_section_overflow(
         match="Import directory exceeds section or file bounds",
     ):
         parse_import_descriptors(file_path)
+
+
+@pytest.mark.parametrize(
+    "magic,optional_size,entry_size",
+    [
+        (0x10B, 224, 4),  # PE32
+        (0x20B, 240, 8),  # PE32+
+    ],
+)
+def test_get_import_thunk_rvas(
+    tmp_path: Path,
+    magic: int,
+    optional_size: int,
+    entry_size: int,
+):
+    file_path = tmp_path / "thunks.exe"
+    data = bytearray(1024)
+
+    # DOS and PE headers.
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(4, "little")
+    data[64:68] = b"PE\x00\x00"
+
+    # One section.
+    data[70:72] = (1).to_bytes(2, "little")
+    data[84:86] = optional_size.to_bytes(2, "little")
+
+    # Optional header.
+    optional_offset = 88
+    data[optional_offset:optional_offset + 2] = (
+        magic.to_bytes(2, "little")
+    )
+
+    # Section header.
+    section_offset = optional_offset + optional_size
+    data[section_offset:section_offset + 8] = b".idata\x00\x00"
+
+    data[section_offset + 8:section_offset + 12] = (
+        0x200
+    ).to_bytes(4, "little")
+    data[section_offset + 12:section_offset + 16] = (
+        0x3000
+    ).to_bytes(4, "little")
+    data[section_offset + 16:section_offset + 20] = (
+        0x200
+    ).to_bytes(4, "little")
+    data[section_offset + 20:section_offset + 24] = (
+        0x200
+    ).to_bytes(4, "little")
+
+    # Import thunk table at RVA 0x3040.
+    thunk_offset = 0x240
+
+    values = [0x3080, 0x30A0, 0]
+
+    for index, value in enumerate(values):
+        start = thunk_offset + index * entry_size
+        data[start:start + entry_size] = value.to_bytes(
+            entry_size,
+            "little",
+        )
+
+    file_path.write_bytes(data)
+
+    descriptor = PEImportDescriptor(
+        original_first_thunk=0x3040,
+        time_date_stamp=0,
+        forwarder_chain=0,
+        name_rva=0x30C0,
+        first_thunk=0,
+    )
+
+    assert get_import_thunk_rvas(
+        file_path,
+        descriptor,
+    ) == [0x3080, 0x30A0]
+
+
+def test_get_import_thunk_rvas_rejects_invalid_limit(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "invalid_limit.exe"
+
+    descriptor = PEImportDescriptor(
+        original_first_thunk=0,
+        time_date_stamp=0,
+        forwarder_chain=0,
+        name_rva=0,
+        first_thunk=0,
+    )
+
+    for invalid_limit in (0, -1, 4097, True):
+        with pytest.raises(ValueError, match="max_imports"):
+            get_import_thunk_rvas(
+                file_path,
+                descriptor,
+                max_imports=invalid_limit,
+            )
