@@ -1500,3 +1500,129 @@ def test_get_import_thunk_rvas_rejects_invalid_limit(
                 descriptor,
                 max_imports=invalid_limit,
             )
+
+
+@pytest.mark.parametrize(
+    "raw_size,thunk_values,error_message",
+    [
+        (
+            4,
+            [0x3080],
+            "Import thunk exceeds section bounds",
+        ),
+        (
+            12,
+            [0x3080, 0x30A0, 0x30C0],
+            "Import thunk exceeds section bounds",
+        ),
+    ],
+)
+def test_import_thunk_rejects_section_overflow(
+    tmp_path: Path,
+    raw_size: int,
+    thunk_values: list[int],
+    error_message: str,
+):
+    file_path = tmp_path / "invalid_thunks.exe"
+    data = bytearray(1024)
+
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(4, "little")
+    data[64:68] = b"PE\x00\x00"
+
+    data[70:72] = (1).to_bytes(2, "little")
+    data[84:86] = (224).to_bytes(2, "little")
+
+    optional_offset = 88
+    data[optional_offset:optional_offset + 2] = (
+        0x10B
+    ).to_bytes(2, "little")
+
+    section_offset = optional_offset + 224
+    data[section_offset:section_offset + 8] = b".idata\x00\x00"
+
+    data[section_offset + 8:section_offset + 12] = (
+        raw_size
+    ).to_bytes(4, "little")
+    data[section_offset + 12:section_offset + 16] = (
+        0x3000
+    ).to_bytes(4, "little")
+    data[section_offset + 16:section_offset + 20] = (
+        raw_size
+    ).to_bytes(4, "little")
+    data[section_offset + 20:section_offset + 24] = (
+        0x200
+    ).to_bytes(4, "little")
+
+    for index, value in enumerate(thunk_values):
+        start = 0x200 + index * 4
+        data[start:start + 4] = value.to_bytes(4, "little")
+
+    file_path.write_bytes(data)
+
+    descriptor = PEImportDescriptor(
+        original_first_thunk=0x3000,
+        time_date_stamp=0,
+        forwarder_chain=0,
+        name_rva=0,
+        first_thunk=0,
+    )
+
+    with pytest.raises(ValueError, match=error_message):
+        get_import_thunk_rvas(file_path, descriptor)
+
+
+def test_import_thunk_rejects_missing_terminator_at_limit(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "thunk_limit.exe"
+    data = bytearray(1024)
+
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(4, "little")
+    data[64:68] = b"PE\x00\x00"
+
+    data[70:72] = (1).to_bytes(2, "little")
+    data[84:86] = (224).to_bytes(2, "little")
+
+    optional_offset = 88
+    data[optional_offset:optional_offset + 2] = (
+        0x10B
+    ).to_bytes(2, "little")
+
+    section_offset = optional_offset + 224
+    data[section_offset:section_offset + 8] = b".idata\x00\x00"
+
+    data[section_offset + 8:section_offset + 12] = (
+        0x200
+    ).to_bytes(4, "little")
+    data[section_offset + 12:section_offset + 16] = (
+        0x3000
+    ).to_bytes(4, "little")
+    data[section_offset + 16:section_offset + 20] = (
+        0x200
+    ).to_bytes(4, "little")
+    data[section_offset + 20:section_offset + 24] = (
+        0x200
+    ).to_bytes(4, "little")
+
+    # Two non-zero entries, but max_imports allows only two.
+    data[0x200:0x204] = (0x3080).to_bytes(4, "little")
+    data[0x204:0x208] = (0x30A0).to_bytes(4, "little")
+
+    file_path.write_bytes(data)
+
+    descriptor = PEImportDescriptor(
+        original_first_thunk=0x3000,
+        time_date_stamp=0,
+        forwarder_chain=0,
+        name_rva=0,
+        first_thunk=0,
+    )
+
+    with pytest.raises(ValueError, match="no null terminator"):
+        get_import_thunk_rvas(
+            file_path,
+            descriptor,
+            max_imports=2,
+        )
