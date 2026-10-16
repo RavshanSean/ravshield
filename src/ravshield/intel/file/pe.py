@@ -955,3 +955,31 @@ def analyze_pe_imports(
     return imported
 
 
+def analyze_pe(
+    file_path: str | Path,
+) -> dict:
+    """
+    Analyze a Windows PE file.
+
+    Return PE format information and imported APIs.
+    """
+
+    file_path = Path(file_path).expanduser()
+
+    magic = get_optional_header_magic(file_path)
+
+    if magic == 0x10B:
+        pe_format = "PE32"
+    elif magic == 0x20B:
+        pe_format = "PE32+"
+    else:
+        raise ValueError("Unsupported PE optional header magic.")
+
+    imports = analyze_pe_imports(file_path)
+
+    return {
+        "format": pe_format,
+        "imports": imports,
+    }
+
+
