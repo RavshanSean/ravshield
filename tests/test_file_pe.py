@@ -22,6 +22,7 @@ from ravshield.intel.file.pe import (
     get_import_thunk_rvas,
     get_imported_api_names,
     analyze_pe_imports,
+    analyze_pe,
 )
 
 
@@ -1887,3 +1888,73 @@ def test_analyze_pe_imports_combines_dlls_and_apis(
             "CreateFileW",
         ],
     }
+    
+
+@pytest.mark.parametrize(
+    "magic,optional_size,expected_format",
+    [
+        (0x10B, 224, "PE32"),
+        (0x20B, 240, "PE32+"),
+    ],
+)
+def test_analyze_pe_returns_format_and_imports(
+    tmp_path: Path,
+    magic: int,
+    optional_size: int,
+    expected_format: str,
+):
+    file_path = tmp_path / "analyze.exe"
+    data = bytearray(1024)
+
+    # DOS and PE signatures.
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (64).to_bytes(4, "little")
+    data[64:68] = b"PE\x00\x00"
+
+    # COFF header: one section.
+    data[70:72] = (1).to_bytes(2, "little")
+    data[84:86] = optional_size.to_bytes(2, "little")
+
+    # Optional header.
+    optional_offset = 88
+    data[optional_offset:optional_offset + 2] = (
+        magic.to_bytes(2, "little")
+    )
+
+    # NumberOfRvaAndSizes = 16.
+    directory_count_offset = (
+        92 if magic == 0x10B else 108
+    )
+    data[
+        optional_offset + directory_count_offset:
+        optional_offset + directory_count_offset + 4
+    ] = (16).to_bytes(4, "little")
+
+    # No imports: Import Directory RVA and size are zero.
+
+    # One .text section.
+    section_offset = optional_offset + optional_size
+    data[section_offset:section_offset + 8] = b".text\x00\x00\x00"
+
+    data[section_offset + 8:section_offset + 12] = (
+        0x200
+    ).to_bytes(4, "little")
+    data[section_offset + 12:section_offset + 16] = (
+        0x1000
+    ).to_bytes(4, "little")
+    data[section_offset + 16:section_offset + 20] = (
+        0x200
+    ).to_bytes(4, "little")
+    data[section_offset + 20:section_offset + 24] = (
+        0x200
+    ).to_bytes(4, "little")
+
+    file_path.write_bytes(data)
+
+    result = analyze_pe(file_path)
+
+    assert result == {
+        "format": expected_format,
+        "imports": {},
+    }
+
