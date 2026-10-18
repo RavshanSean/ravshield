@@ -11,6 +11,7 @@ from ravshield.intel.file.pe_sections import (
     parse_pe_sections,
     has_writable_executable_section,
     find_suspicious_section_names,
+    calculate_entropy,
 )
 
 import math
@@ -160,27 +161,6 @@ def parse_pe_header(
             byteorder="little",
         ),
     )
-
-def calculate_entropy(data: bytes) -> float:
-    """
-    Calculate Shannon entropy for a sequence of bytes.
-    """
-
-    if not data:
-        return 0.0
-
-    entropy = 0.0
-    data_length = len(data)
-
-    for byte_value in set(data):
-        frequency = data.count(byte_value)
-        probability = frequency / data_length
-
-        entropy -= probability * math.log2(
-            probability
-        )
-
-    return entropy
 
 def calculate_section_entropies(
     file_path: str | Path,

@@ -165,3 +165,24 @@ def find_suspicious_section_names(
             matches.append(section.name)
 
     return matches
+
+def calculate_entropy(data: bytes) -> float:
+    """
+    Calculate Shannon entropy for a sequence of bytes.
+    """
+
+    if not data:
+        return 0.0
+
+    entropy = 0.0
+    data_length = len(data)
+
+    for byte_value in set(data):
+        frequency = data.count(byte_value)
+        probability = frequency / data_length
+
+        entropy -= probability * math.log2(
+            probability
+        )
+
+    return entropy
