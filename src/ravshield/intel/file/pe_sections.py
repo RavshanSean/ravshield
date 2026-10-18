@@ -121,3 +121,27 @@ def parse_pe_sections(
             )
 
     return sections
+
+def has_writable_executable_section(
+    file_path: str | Path,
+) -> bool:
+    """
+    Return True when any PE section is both writable and executable.
+    """
+
+    sections = parse_pe_sections(file_path)
+
+    for section in sections:
+        is_executable = bool(
+            section.characteristics
+            & IMAGE_SCN_MEM_EXECUTE
+        )
+        is_writable = bool(
+            section.characteristics
+            & IMAGE_SCN_MEM_WRITE
+        )
+
+        if is_executable and is_writable:
+            return True
+
+    return False
