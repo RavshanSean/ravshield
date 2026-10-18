@@ -145,3 +145,23 @@ def has_writable_executable_section(
             return True
 
     return False
+
+def find_suspicious_section_names(
+    file_path: str | Path,
+) -> list[str]:
+    """
+    Return PE section names associated with common packers
+    or executable protectors.
+    """
+
+    sections = parse_pe_sections(file_path)
+
+    matches: list[str] = []
+
+    for section in sections:
+        normalized_name = section.name.lower()
+
+        if normalized_name in SUSPICIOUS_SECTION_NAMES:
+            matches.append(section.name)
+
+    return matches

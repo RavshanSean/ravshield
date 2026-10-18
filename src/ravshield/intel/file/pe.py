@@ -10,6 +10,7 @@ from ravshield.intel.file.pe_models import (
 from ravshield.intel.file.pe_sections import (
     parse_pe_sections,
     has_writable_executable_section,
+    find_suspicious_section_names,
 )
 
 import math
@@ -159,26 +160,6 @@ def parse_pe_header(
             byteorder="little",
         ),
     )
-
-def find_suspicious_section_names(
-    file_path: str | Path,
-) -> list[str]:
-    """
-    Return PE section names associated with common packers
-    or executable protectors.
-    """
-
-    sections = parse_pe_sections(file_path)
-
-    matches: list[str] = []
-
-    for section in sections:
-        normalized_name = section.name.lower()
-
-        if normalized_name in SUSPICIOUS_SECTION_NAMES:
-            matches.append(section.name)
-
-    return matches
 
 def calculate_entropy(data: bytes) -> float:
     """
