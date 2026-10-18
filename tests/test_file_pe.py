@@ -1974,3 +1974,31 @@ def test_analyze_pe_returns_format_and_imports(
     # The test section contains only zero bytes.
     assert section["entropy"] == 0.0
 
+
+@pytest.mark.parametrize(
+    "file_data",
+    [
+        b"",
+        b"Not a PE file",
+        b"MZ",
+        b"MZ" + b"\x00" * 62,
+    ],
+)
+def test_analyze_pe_rejects_invalid_files(
+    tmp_path: Path,
+    file_data: bytes,
+):
+    file_path = tmp_path / "invalid.exe"
+    file_path.write_bytes(file_data)
+
+    with pytest.raises(ValueError):
+        analyze_pe(file_path)
+
+
+def test_analyze_pe_rejects_missing_file(
+    tmp_path: Path,
+):
+    file_path = tmp_path / "missing.exe"
+
+    with pytest.raises((ValueError, FileNotFoundError)):
+        analyze_pe(file_path)
