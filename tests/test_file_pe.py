@@ -1953,8 +1953,24 @@ def test_analyze_pe_returns_format_and_imports(
 
     result = analyze_pe(file_path)
 
-    assert result == {
-        "format": expected_format,
-        "imports": {},
-    }
+    
+    assert result["format"] == expected_format
+    assert result["imports"] == {}
+
+    # Validate PE header.
+    assert result["header"]["number_of_sections"] == 1
+    assert result["header"]["size_of_optional_header"] == optional_size
+
+    # Validate parsed sections.
+    assert len(result["sections"]) == 1
+
+    section = result["sections"][0]
+
+    assert section["name"] == ".text"
+    assert section["virtual_address"] == 0x1000
+    assert section["raw_data_size"] == 0x200
+    assert section["raw_data_pointer"] == 0x200
+
+    # The test section contains only zero bytes.
+    assert section["entropy"] == 0.0
 

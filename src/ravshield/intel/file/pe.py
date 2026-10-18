@@ -961,7 +961,8 @@ def analyze_pe(
     """
     Analyze a Windows PE file.
 
-    Return PE format information and imported APIs.
+    Return PE format, headers, sections, entropy,
+    and imported DLL/API information.
     """
 
     file_path = Path(file_path).expanduser()
@@ -976,10 +977,32 @@ def analyze_pe(
         raise ValueError("Unsupported PE optional header magic.")
 
     imports = analyze_pe_imports(file_path)
+    header = parse_pe_header(file_path)
+    sections = parse_pe_sections(file_path)
+    entropies = calculate_section_entropies(file_path)
+
+    section_results = []
+
+    for section in sections:
+        section_results.append({
+            "name": section.name,
+            "virtual_size": section.virtual_size,
+            "virtual_address": section.virtual_address,
+            "raw_data_size": section.raw_data_size,
+            "raw_data_pointer": section.raw_data_pointer,
+            "characteristics": section.characteristics,
+            "entropy": entropies[section.name],
+        })
 
     return {
         "format": pe_format,
+        "header": {
+            "machine": header.machine,
+            "number_of_sections": header.number_of_sections,
+            "timestamp": header.timestamp,
+            "size_of_optional_header": header.size_of_optional_header,
+            "characteristics": header.characteristics,
+        },
+        "sections": section_results,
         "imports": imports,
     }
-
-
