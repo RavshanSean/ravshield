@@ -18,7 +18,10 @@ from ravshield.intel.file.pe_sections import (
 
 import math
 
-from ravshield.intel.file.pe_imports import get_import_directory
+from ravshield.intel.file.pe_imports import (
+    get_import_directory,
+    rva_to_file_offset,
+)
 
 from pathlib import Path
 
@@ -231,36 +234,6 @@ def get_optional_header_magic(
         )
 
     return magic
-    
-
-def rva_to_file_offset(
-    file_path: str | Path,
-    rva: int,
-) -> int:
-    """
-    Translate a PE RVA into a raw file offset.
-    """
-
-    if not isinstance(rva, int) or isinstance(rva, bool) or rva < 0:
-        raise ValueError("RVA must be a non-negative integer.")
-
-    sections = parse_pe_sections(file_path)
-    file_size = Path(file_path).expanduser().stat().st_size
-
-    for section in sections:
-        start = section.virtual_address
-        raw_size = section.raw_data_size
-
-        if start <= rva < start + raw_size:
-            relative_offset = rva - start
-            file_offset = section.raw_data_pointer + relative_offset
-
-            if file_offset >= file_size:
-                raise ValueError("RVA points outside file bounds.")
-
-            return file_offset
-
-    raise ValueError("RVA is not mapped to raw section data.")
 
 
 def parse_import_descriptors(
