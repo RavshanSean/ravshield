@@ -122,3 +122,101 @@ def rva_to_file_offset(
             return file_offset
 
     raise ValueError("RVA is not mapped to raw section data.")
+
+def parse_import_descriptors(
+    file_path: str | Path,
+) -> list[PEImportDescriptor]:
+    """
+    Parse PE import directory descriptors.
+    """
+
+    import_directory = get_import_directory(file_path)
+
+    if import_directory.rva == 0 or import_directory.size == 0:
+        return []
+
+    file_path = Path(file_path).expanduser()
+    file_size = file_path.stat().st_size
+
+    descriptor_offset = rva_to_file_offset(
+        file_path,
+        import_directory.rva,
+    )
+
+    descriptor_size = 20
+
+    if import_directory.size < descriptor_size:
+        raise ValueError("Import directory is too small.")
+
+    if import_directory.size % descriptor_size != 0:
+        raise ValueError("Import directory has an invalid size.")
+
+    max_descriptors = min(
+        import_directory.size // descriptor_size,
+        4096,
+    )
+
+    sections = parse_pe_sections(file_path)
+
+    matching_section = next(
+        (
+            section
+            for section in sections
+            if section.virtual_address <= import_directory.rva
+            < section.virtual_address + section.raw_data_size
+        ),
+        None,
+    )
+
+    if matching_section is None:
+        raise ValueError("Import directory is not mapped to a section.")
+
+    section_end = (
+        matching_section.raw_data_pointer
+        + matching_section.raw_data_size
+    )
+
+    directory_end = descriptor_offset + import_directory.size
+
+    if directory_end > section_end or directory_end > file_size:
+        raise ValueError("Import directory exceeds section or file bounds.")
+
+    descriptors = []
+    found_terminator = False
+
+    with file_path.open("rb") as file:
+        for index in range(max_descriptors):
+            offset = descriptor_offset + index * descriptor_size
+
+            if offset + descriptor_size > file_size:
+                raise ValueError("Import descriptor exceeds file bounds.")
+
+            file.seek(offset)
+            data = file.read(descriptor_size)
+
+            if len(data) != descriptor_size:
+                raise ValueError("Truncated PE import descriptor.")
+
+            values = [
+                int.from_bytes(data[i:i + 4], "little")
+                for i in range(0, descriptor_size, 4)
+            ]
+
+            if all(value == 0 for value in values):
+                found_terminator = True
+                break
+
+            descriptors.append(
+                PEImportDescriptor(
+                    original_first_thunk=values[0],
+                    time_date_stamp=values[1],
+                    forwarder_chain=values[2],
+                    name_rva=values[3],
+                    first_thunk=values[4],
+                )
+            )
+            
+    if not found_terminator:
+        raise ValueError("Import directory has no null terminator.")
+
+    return descriptors
