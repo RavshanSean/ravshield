@@ -24,6 +24,7 @@ from ravshield.intel.file.pe_imports import (
     parse_import_descriptors,
     read_pe_string,
     get_imported_dll_names,
+    get_import_thunk_rvas,
 )
 
 from pathlib import Path
@@ -237,94 +238,6 @@ def get_optional_header_magic(
         )
 
     return magic
-
-def get_import_thunk_rvas(
-    file_path: str | Path,
-    descriptor: PEImportDescriptor,
-    max_imports: int = 4096,
-) -> list[int]:
-    """
-    Read import thunk values from a PE file.
-    """
-
-    if (
-        not isinstance(max_imports, int)
-        or isinstance(max_imports, bool)
-        or not 1 <= max_imports <= 4096
-    ):
-        raise ValueError("max_imports must be between 1 and 4096.")
-
-    magic = get_optional_header_magic(file_path)
-
-    if magic == 0x10B:
-        entry_size = 4
-    elif magic == 0x20B:
-        entry_size = 8
-    else:
-        raise ValueError("Unsupported PE optional header magic.")
-
-    thunk_rva = (
-        descriptor.original_first_thunk
-        or descriptor.first_thunk
-    )
-
-    if thunk_rva == 0:
-        return []
-
-    file_path = Path(file_path).expanduser()
-    file_size = file_path.stat().st_size
-    sections = parse_pe_sections(file_path)
-
-    matching_section = next(
-        (
-            section
-            for section in sections
-            if section.virtual_address <= thunk_rva
-            < section.virtual_address + section.raw_data_size
-        ),
-        None,
-    )
-
-    if matching_section is None:
-        raise ValueError("Import thunk RVA is not mapped.")
-
-    offset = rva_to_file_offset(file_path, thunk_rva)
-
-    section_end = min(
-        matching_section.raw_data_pointer
-        + matching_section.raw_data_size,
-        file_size,
-    )
-
-    values = []
-    found_terminator = False
-
-    with file_path.open("rb") as file:
-        for index in range(max_imports):
-            entry_offset = offset + index * entry_size
-
-            if entry_offset + entry_size > section_end:
-                raise ValueError("Import thunk exceeds section bounds.")
-
-            file.seek(entry_offset)
-            data = file.read(entry_size)
-
-            if len(data) != entry_size:
-                raise ValueError("Truncated import thunk.")
-
-            value = int.from_bytes(data, "little")
-
-            if value == 0:
-                found_terminator = True
-                break
-
-            values.append(value)
-
-    if not found_terminator:
-        raise ValueError("Import thunk table has no null terminator.")
-
-    return values
-
 
 def get_imported_api_names(
     file_path: str | Path,
