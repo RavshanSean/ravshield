@@ -395,3 +395,73 @@ def get_import_thunk_rvas(
         raise ValueError("Import thunk table has no null terminator.")
 
     return values
+
+def get_imported_api_names(
+    file_path: str | Path,
+    descriptor: PEImportDescriptor,
+) -> list[str]:
+    """
+    Extract imported API names from a PE import descriptor.
+
+    Ordinal imports are represented as '#<ordinal>'.
+    """
+    
+    from ravshield.intel.file.pe import get_optional_header_magic
+
+    magic = get_optional_header_magic(file_path)
+
+    if magic == 0x10B:
+        ordinal_flag = 0x80000000
+        address_mask = 0x7FFFFFFF
+    elif magic == 0x20B:
+        ordinal_flag = 0x8000000000000000
+        address_mask = 0x7FFFFFFFFFFFFFFF
+    else:
+        raise ValueError("Unsupported PE optional header magic.")
+
+    thunk_values = get_import_thunk_rvas(
+        file_path,
+        descriptor,
+    )
+
+    api_names = []
+
+    for value in thunk_values:
+        # Import by ordinal.
+        if value & ordinal_flag:
+            if value & (address_mask & ~0xFFFF):
+                raise ValueError("Invalid ordinal import.")
+
+            ordinal = value & 0xFFFF
+
+            if ordinal == 0:
+                raise ValueError("Invalid ordinal import.")
+
+            api_names.append(f"#{ordinal}")
+            continue
+
+        # Import by name.
+        name_rva = value & address_mask
+
+        if name_rva == 0:
+            raise ValueError("Invalid API name RVA.")
+
+        # IMAGE_IMPORT_BY_NAME starts with a 2-byte hint.
+        # Validate that the hint and name fit in mapped raw data.
+        file_offset = rva_to_file_offset(file_path, name_rva)
+        next_offset = rva_to_file_offset(file_path, name_rva + 1)
+
+        if next_offset != file_offset + 1:
+            raise ValueError("Truncated API name hint.")
+
+        api_name = read_pe_string(
+            file_path,
+            name_rva + 2,
+        )
+
+        if not api_name:
+            raise ValueError("Empty imported API name.")
+
+        api_names.append(api_name)
+
+    return api_names
