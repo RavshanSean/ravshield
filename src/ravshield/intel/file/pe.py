@@ -26,6 +26,7 @@ from ravshield.intel.file.pe_imports import (
     get_imported_dll_names,
     get_import_thunk_rvas,
     get_imported_api_names,
+    analyze_pe_imports,
 )
 
 from pathlib import Path
@@ -239,39 +240,6 @@ def get_optional_header_magic(
         )
 
     return magic
-
-def analyze_pe_imports(
-    file_path: str | Path,
-) -> dict[str, list[str]]:
-    """
-    Analyze imported DLLs and their API functions.
-
-    Return a dictionary mapping DLL names to API names.
-    """
-
-    descriptors = parse_import_descriptors(file_path)
-
-    imported = {}
-
-    for descriptor in descriptors:
-        dll_name = read_pe_string(
-            file_path,
-            descriptor.name_rva,
-        )
-
-        if not dll_name:
-            raise ValueError("Empty imported DLL name.")
-
-        api_names = get_imported_api_names(
-            file_path,
-            descriptor,
-        )
-
-        # Preserve imports if a DLL appears multiple times.
-        imported.setdefault(dll_name, []).extend(api_names)
-
-    return imported
-
 
 def analyze_pe(
     file_path: str | Path,
