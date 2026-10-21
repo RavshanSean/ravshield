@@ -280,3 +280,29 @@ def read_pe_string(
         return data[:null_position].decode("ascii")
     except UnicodeDecodeError as exc:
         raise ValueError("PE string contains non-ASCII bytes.") from exc
+    
+def get_imported_dll_names(
+    file_path: str | Path,
+) -> list[str]:
+    """
+    Extract imported DLL names from a PE file.
+    """
+
+    descriptors = parse_import_descriptors(file_path)
+    dll_names = []
+
+    for descriptor in descriptors:
+        if descriptor.name_rva == 0:
+            raise ValueError("Import descriptor has no DLL name RVA.")
+
+        dll_name = read_pe_string(
+            file_path,
+            descriptor.name_rva,
+        )
+
+        if not dll_name:
+            raise ValueError("Import descriptor has an empty DLL name.")
+
+        dll_names.append(dll_name)
+
+    return dll_names

@@ -23,6 +23,7 @@ from ravshield.intel.file.pe_imports import (
     rva_to_file_offset,
     parse_import_descriptors,
     read_pe_string,
+    get_imported_dll_names,
 )
 
 from pathlib import Path
@@ -236,34 +237,6 @@ def get_optional_header_magic(
         )
 
     return magic
-
-
-def get_imported_dll_names(
-    file_path: str | Path,
-) -> list[str]:
-    """
-    Extract imported DLL names from a PE file.
-    """
-
-    descriptors = parse_import_descriptors(file_path)
-    dll_names = []
-
-    for descriptor in descriptors:
-        if descriptor.name_rva == 0:
-            raise ValueError("Import descriptor has no DLL name RVA.")
-
-        dll_name = read_pe_string(
-            file_path,
-            descriptor.name_rva,
-        )
-
-        if not dll_name:
-            raise ValueError("Import descriptor has an empty DLL name.")
-
-        dll_names.append(dll_name)
-
-    return dll_names
-
 
 def get_import_thunk_rvas(
     file_path: str | Path,
