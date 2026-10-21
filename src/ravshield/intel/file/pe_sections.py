@@ -233,3 +233,27 @@ def calculate_section_entropies(
             )
 
     return entropies
+
+def find_high_entropy_sections(
+    file_path: str | Path,
+    threshold: float = HIGH_ENTROPY_THRESHOLD,
+) -> dict[str, float]:
+    """
+    Return PE sections whose entropy meets or exceeds
+    the configured threshold.
+    """
+
+    if not 0.0 <= threshold <= 8.0:
+        raise ValueError(
+            "Entropy threshold must be between 0.0 and 8.0."
+        )
+
+    entropies = calculate_section_entropies(
+        file_path
+    )
+
+    return {
+        name: entropy
+        for name, entropy in entropies.items()
+        if entropy >= threshold
+    }
