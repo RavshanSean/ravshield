@@ -83,3 +83,40 @@ def test_get_pdf_version_rejects_missing_file(tmp_path: Path):
 
     with pytest.raises(ValueError, match="Invalid file path"):
         get_pdf_version(file_path)
+        
+from ravshield.intel.file.pdf import has_pdf_eof_marker
+
+
+def test_pdf_eof_marker_is_detected(tmp_path: Path):
+    file_path = tmp_path / "valid.pdf"
+    file_path.write_bytes(b"%PDF-1.7\n%%EOF\n")
+
+    assert has_pdf_eof_marker(file_path) is True
+
+
+def test_pdf_without_eof_marker_is_rejected(tmp_path: Path):
+    file_path = tmp_path / "missing_eof.pdf"
+    file_path.write_bytes(b"%PDF-1.7\nSome PDF data")
+
+    assert has_pdf_eof_marker(file_path) is False
+
+
+def test_pdf_eof_marker_with_trailing_whitespace(tmp_path: Path):
+    file_path = tmp_path / "trailing.pdf"
+    file_path.write_bytes(b"%PDF-1.7\n%%EOF\n\n   ")
+
+    assert has_pdf_eof_marker(file_path) is True
+
+
+def test_pdf_eof_marker_outside_last_1024_bytes(tmp_path: Path):
+    file_path = tmp_path / "distant_eof.pdf"
+    file_path.write_bytes(b"%PDF-1.7\n%%EOF" + b"X" * 2048)
+
+    assert has_pdf_eof_marker(file_path) is False
+
+
+def test_missing_pdf_file_eof_raises_value_error(tmp_path: Path):
+    file_path = tmp_path / "missing.pdf"
+
+    with pytest.raises(ValueError, match="Invalid file path"):
+        has_pdf_eof_marker(file_path)
