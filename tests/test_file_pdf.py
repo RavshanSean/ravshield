@@ -380,3 +380,36 @@ def test_read_pdf_safely_missing_file(tmp_path: Path):
 
 def test_default_pdf_scan_limit():
     assert MAX_PDF_SCAN_SIZE == 50 * 1024 * 1024
+    
+@pytest.mark.parametrize(
+    "detector",
+    [
+        has_pdf_javascript,
+        has_pdf_dangerous_actions,
+        has_pdf_embedded_files,
+        has_pdf_external_links,
+        has_pdf_submit_form,
+    ],
+)
+def test_pdf_detectors_reject_oversized_files(
+    tmp_path: Path,
+    monkeypatch,
+    detector,
+):
+    import ravshield.intel.file.pdf as pdf_module
+
+    file_path = tmp_path / "oversized.pdf"
+    file_path.write_bytes(b"%PDF-1.7\n" + b"A" * 100)
+
+    original_reader = pdf_module.read_pdf_safely
+
+    def limited_reader(path):
+        return original_reader(path, max_size=50)
+
+    monkeypatch.setattr(pdf_module, "read_pdf_safely", limited_reader)
+
+    with pytest.raises(
+        ValueError,
+        match="PDF exceeds maximum scan size",
+    ):
+        detector(file_path)

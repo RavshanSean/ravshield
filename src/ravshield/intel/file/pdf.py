@@ -90,13 +90,7 @@ def has_pdf_javascript(file_path: str | Path) -> bool:
     JavaScript is never executed.
     """
 
-    if not validate_file(file_path):
-        raise ValueError("Invalid file path.")
-
-    path = Path(file_path).expanduser()
-
-    with path.open("rb") as file:
-        data = file.read()
+    data = read_pdf_safely(file_path)
 
     return PDF_JS_NAME_PATTERN.search(data) is not None
 
@@ -113,13 +107,7 @@ def has_pdf_dangerous_actions(file_path: str | Path) -> bool:
     No PDF actions are executed.
     """
 
-    if not validate_file(file_path):
-        raise ValueError("Invalid file path.")
-
-    path = Path(file_path).expanduser()
-
-    with path.open("rb") as file:
-        data = file.read()
+    data = read_pdf_safely(file_path)
 
     return PDF_DANGEROUS_ACTION_PATTERN.search(data) is not None
 
@@ -136,13 +124,7 @@ def has_pdf_embedded_files(file_path: str | Path) -> bool:
     Embedded files are never extracted or executed.
     """
 
-    if not validate_file(file_path):
-        raise ValueError("Invalid file path.")
-
-    path = Path(file_path).expanduser()
-
-    with path.open("rb") as file:
-        data = file.read()
+    data = read_pdf_safely(file_path)
 
     return PDF_EMBEDDED_FILE_PATTERN.search(data) is not None
 
@@ -159,13 +141,7 @@ def has_pdf_external_links(file_path: str | Path) -> bool:
     External links are never opened or visited.
     """
 
-    if not validate_file(file_path):
-        raise ValueError("Invalid file path.")
-
-    path = Path(file_path).expanduser()
-
-    with path.open("rb") as file:
-        data = file.read()
+    data = read_pdf_safely(file_path)
 
     return PDF_URI_PATTERN.search(data) is not None
 
@@ -182,13 +158,7 @@ def has_pdf_submit_form(file_path: str | Path) -> bool:
     No forms are submitted and no network requests are made.
     """
 
-    if not validate_file(file_path):
-        raise ValueError("Invalid file path.")
-
-    path = Path(file_path).expanduser()
-
-    with path.open("rb") as file:
-        data = file.read()
+    data = read_pdf_safely(file_path)
 
     return PDF_SUBMIT_FORM_PATTERN.search(data) is not None
 
