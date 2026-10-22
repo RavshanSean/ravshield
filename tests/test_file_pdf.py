@@ -244,3 +244,45 @@ def test_pdf_embedded_files_missing_file(tmp_path: Path):
 
     with pytest.raises(ValueError, match="Invalid file path"):
         has_pdf_embedded_files(file_path)
+        
+from ravshield.intel.file.pdf import has_pdf_external_links
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"%PDF-1.7\n/A << /S /URI /URI (https://example.com) >>\n%%EOF",
+        b"%PDF-1.7\n/URI (http://example.org)\n%%EOF",
+        b"%PDF-1.7\n/URI<6874747073>\n%%EOF",
+        b"%PDF-1.7\n/URI\n(https://example.com)\n%%EOF",
+    ],
+)
+def test_pdf_external_links_detected(tmp_path: Path, content: bytes):
+    file_path = tmp_path / "links.pdf"
+    file_path.write_bytes(content)
+
+    assert has_pdf_external_links(file_path) is True
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"%PDF-1.7\n/Type /Catalog\n%%EOF",
+        b"%PDF-1.7\n/URILoader\n%%EOF",
+        b"%PDF-1.7\n/URIHandler\n%%EOF",
+        b"%PDF-1.7\nThis document mentions URI\n%%EOF",
+        b"%PDF-1.7\n%%EOF",
+    ],
+)
+def test_pdf_external_links_not_detected(tmp_path: Path, content: bytes):
+    file_path = tmp_path / "normal.pdf"
+    file_path.write_bytes(content)
+
+    assert has_pdf_external_links(file_path) is False
+
+
+def test_pdf_external_links_missing_file(tmp_path: Path):
+    file_path = tmp_path / "missing.pdf"
+
+    with pytest.raises(ValueError, match="Invalid file path"):
+        has_pdf_external_links(file_path)

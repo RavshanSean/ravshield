@@ -145,3 +145,26 @@ def has_pdf_embedded_files(file_path: str | Path) -> bool:
         data = file.read()
 
     return PDF_EMBEDDED_FILE_PATTERN.search(data) is not None
+
+PDF_URI_PATTERN = re.compile(
+    rb"/URI(?=[\x00\x09\x0A\x0C\x0D\x20()<>\[\]{}/%])"
+)
+
+
+def has_pdf_external_links(file_path: str | Path) -> bool:
+    """
+    Detect possible URI entries in PDF files.
+
+    This is a heuristic scan, not full PDF parsing.
+    External links are never opened or visited.
+    """
+
+    if not validate_file(file_path):
+        raise ValueError("Invalid file path.")
+
+    path = Path(file_path).expanduser()
+
+    with path.open("rb") as file:
+        data = file.read()
+
+    return PDF_URI_PATTERN.search(data) is not None
