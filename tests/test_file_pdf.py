@@ -328,3 +328,55 @@ def test_pdf_submit_form_missing_file(tmp_path: Path):
 
     with pytest.raises(ValueError, match="Invalid file path"):
         has_pdf_submit_form(file_path)
+        
+from ravshield.intel.file.pdf import read_pdf_safely, MAX_PDF_SCAN_SIZE
+
+
+def test_read_pdf_safely_valid_file(tmp_path: Path):
+    file_path = tmp_path / "valid.pdf"
+    content = b"%PDF-1.7\nHello\n%%EOF"
+    file_path.write_bytes(content)
+
+    assert read_pdf_safely(file_path) == content
+
+
+def test_read_pdf_safely_empty_file(tmp_path: Path):
+    file_path = tmp_path / "empty.pdf"
+    file_path.write_bytes(b"")
+
+    assert read_pdf_safely(file_path) == b""
+
+
+def test_read_pdf_safely_exact_limit(tmp_path: Path):
+    file_path = tmp_path / "exact.pdf"
+    file_path.write_bytes(b"A" * 100)
+
+    assert read_pdf_safely(file_path, max_size=100) == b"A" * 100
+
+
+def test_read_pdf_safely_exceeds_limit(tmp_path: Path):
+    file_path = tmp_path / "large.pdf"
+    file_path.write_bytes(b"A" * 101)
+
+    with pytest.raises(ValueError, match="PDF exceeds maximum scan size"):
+        read_pdf_safely(file_path, max_size=100)
+
+
+@pytest.mark.parametrize("max_size", [0, -1, 1.5, "100", None, True])
+def test_read_pdf_safely_invalid_limit(tmp_path: Path, max_size):
+    file_path = tmp_path / "valid.pdf"
+    file_path.write_bytes(b"%PDF-1.7")
+
+    with pytest.raises(ValueError, match="Invalid PDF size limit"):
+        read_pdf_safely(file_path, max_size=max_size)
+
+
+def test_read_pdf_safely_missing_file(tmp_path: Path):
+    file_path = tmp_path / "missing.pdf"
+
+    with pytest.raises(ValueError, match="Invalid file path"):
+        read_pdf_safely(file_path)
+
+
+def test_default_pdf_scan_limit():
+    assert MAX_PDF_SCAN_SIZE == 50 * 1024 * 1024

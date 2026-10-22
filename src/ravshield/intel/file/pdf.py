@@ -191,3 +191,32 @@ def has_pdf_submit_form(file_path: str | Path) -> bool:
         data = file.read()
 
     return PDF_SUBMIT_FORM_PATTERN.search(data) is not None
+
+MAX_PDF_SCAN_SIZE = 50 * 1024 * 1024  # 50 MiB
+
+
+def read_pdf_safely(
+    file_path: str | Path,
+    max_size: int = MAX_PDF_SCAN_SIZE,
+) -> bytes:
+    """
+    Read a PDF candidate with a strict size limit.
+
+    This function does not parse or execute PDF content.
+    """
+
+    if not isinstance(max_size, int) or isinstance(max_size, bool) or max_size <= 0:
+        raise ValueError("Invalid PDF size limit.")
+
+    if not validate_file(file_path):
+        raise ValueError("Invalid file path.")
+
+    path = Path(file_path).expanduser()
+
+    with path.open("rb") as file:
+        data = file.read(max_size + 1)
+
+    if len(data) > max_size:
+        raise ValueError("PDF exceeds maximum scan size.")
+
+    return data
