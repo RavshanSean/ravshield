@@ -122,3 +122,26 @@ def has_pdf_dangerous_actions(file_path: str | Path) -> bool:
         data = file.read()
 
     return PDF_DANGEROUS_ACTION_PATTERN.search(data) is not None
+
+PDF_EMBEDDED_FILE_PATTERN = re.compile(
+    rb"/(?:EmbeddedFile|EmbeddedFiles)(?![A-Za-z0-9_])"
+)
+
+
+def has_pdf_embedded_files(file_path: str | Path) -> bool:
+    """
+    Detect possible embedded-file indicators in a PDF.
+
+    This is a heuristic scan, not full PDF parsing.
+    Embedded files are never extracted or executed.
+    """
+
+    if not validate_file(file_path):
+        raise ValueError("Invalid file path.")
+
+    path = Path(file_path).expanduser()
+
+    with path.open("rb") as file:
+        data = file.read()
+
+    return PDF_EMBEDDED_FILE_PATTERN.search(data) is not None

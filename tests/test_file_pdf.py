@@ -202,3 +202,45 @@ def test_pdf_dangerous_actions_missing_file(tmp_path: Path):
 
     with pytest.raises(ValueError, match="Invalid file path"):
         has_pdf_dangerous_actions(file_path)
+        
+from ravshield.intel.file.pdf import has_pdf_embedded_files
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"%PDF-1.7\n/Type /EmbeddedFile\n%%EOF",
+        b"%PDF-1.7\n/Names << /EmbeddedFiles 5 0 R >>\n%%EOF",
+        b"%PDF-1.7\n/EmbeddedFile\n%%EOF",
+        b"%PDF-1.7\n/EmbeddedFiles\n%%EOF",
+    ],
+)
+def test_pdf_embedded_files_detected(tmp_path: Path, content: bytes):
+    file_path = tmp_path / "embedded.pdf"
+    file_path.write_bytes(content)
+
+    assert has_pdf_embedded_files(file_path) is True
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"%PDF-1.7\n/Type /Catalog\n%%EOF",
+        b"%PDF-1.7\n/EmbeddedFileHandler\n%%EOF",
+        b"%PDF-1.7\n/EmbeddedFilesList\n%%EOF",
+        b"%PDF-1.7\nThis document mentions EmbeddedFile\n%%EOF",
+        b"%PDF-1.7\n%%EOF",
+    ],
+)
+def test_pdf_embedded_files_not_detected(tmp_path: Path, content: bytes):
+    file_path = tmp_path / "normal.pdf"
+    file_path.write_bytes(content)
+
+    assert has_pdf_embedded_files(file_path) is False
+
+
+def test_pdf_embedded_files_missing_file(tmp_path: Path):
+    file_path = tmp_path / "missing.pdf"
+
+    with pytest.raises(ValueError, match="Invalid file path"):
+        has_pdf_embedded_files(file_path)
