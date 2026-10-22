@@ -120,3 +120,43 @@ def test_missing_pdf_file_eof_raises_value_error(tmp_path: Path):
 
     with pytest.raises(ValueError, match="Invalid file path"):
         has_pdf_eof_marker(file_path)
+        
+from ravshield.intel.file.pdf import has_pdf_javascript
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"%PDF-1.7\n/JavaScript\n%%EOF",
+        b"%PDF-1.7\n/JS (app.alert('Hello'))\n%%EOF",
+        b"%PDF-1.7\n/S /JavaScript\n/JS (test)\n%%EOF",
+    ],
+)
+def test_pdf_javascript_detected(tmp_path: Path, content: bytes):
+    file_path = tmp_path / "javascript.pdf"
+    file_path.write_bytes(content)
+
+    assert has_pdf_javascript(file_path) is True
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"%PDF-1.7\n/Type /Catalog\n%%EOF",
+        b"%PDF-1.7\n/JavaScriptAction\n%%EOF",
+        b"%PDF-1.7\n/JSCode\n%%EOF",
+        b"%PDF-1.7\nThis document contains JavaScript\n%%EOF",
+    ],
+)
+def test_pdf_javascript_not_detected(tmp_path: Path, content: bytes):
+    file_path = tmp_path / "safe.pdf"
+    file_path.write_bytes(content)
+
+    assert has_pdf_javascript(file_path) is False
+
+
+def test_pdf_javascript_missing_file(tmp_path: Path):
+    file_path = tmp_path / "missing.pdf"
+
+    with pytest.raises(ValueError, match="Invalid file path"):
+        has_pdf_javascript(file_path)

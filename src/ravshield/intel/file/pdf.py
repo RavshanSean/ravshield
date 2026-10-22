@@ -73,3 +73,29 @@ def has_pdf_eof_marker(file_path: str | Path) -> bool:
         tail = file.read(read_size)
 
     return b"%%EOF" in tail
+
+import re
+
+
+PDF_JS_NAME_PATTERN = re.compile(
+    rb"/(?:JavaScript|JS)(?![A-Za-z0-9_])"
+)
+
+
+def has_pdf_javascript(file_path: str | Path) -> bool:
+    """
+    Detect possible JavaScript-related PDF names.
+
+    This is a heuristic scan, not full PDF parsing.
+    JavaScript is never executed.
+    """
+
+    if not validate_file(file_path):
+        raise ValueError("Invalid file path.")
+
+    path = Path(file_path).expanduser()
+
+    with path.open("rb") as file:
+        data = file.read()
+
+    return PDF_JS_NAME_PATTERN.search(data) is not None
