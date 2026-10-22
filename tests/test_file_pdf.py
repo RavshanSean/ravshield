@@ -38,3 +38,48 @@ def test_truncated_pdf_signature_is_rejected(tmp_path: Path):
     file_path.write_bytes(b"%PDF")
 
     assert has_pdf_signature(file_path) is False
+    
+from ravshield.intel.file.pdf import get_pdf_version
+
+
+@pytest.mark.parametrize(
+    "version",
+    ["1.0", "1.4", "1.7", "2.0"],
+)
+def test_get_pdf_version_reads_valid_header(
+    tmp_path: Path,
+    version: str,
+):
+    file_path = tmp_path / "sample.pdf"
+    file_path.write_bytes(f"%PDF-{version}\n".encode("ascii"))
+
+    assert get_pdf_version(file_path) == version
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        b"NOT A PDF",
+        b"%PDF-",
+        b"%PDF-1.",
+        b"%PDF-3.0",
+        b"%PDF-1.A",
+        b"%PDF-1-7",
+    ],
+)
+def test_get_pdf_version_rejects_invalid_header(
+    tmp_path: Path,
+    header: bytes,
+):
+    file_path = tmp_path / "invalid.pdf"
+    file_path.write_bytes(header)
+
+    with pytest.raises(ValueError, match="Invalid PDF version header"):
+        get_pdf_version(file_path)
+
+
+def test_get_pdf_version_rejects_missing_file(tmp_path: Path):
+    file_path = tmp_path / "missing.pdf"
+
+    with pytest.raises(ValueError, match="Invalid file path"):
+        get_pdf_version(file_path)
