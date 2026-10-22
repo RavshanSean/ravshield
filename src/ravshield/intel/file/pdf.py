@@ -99,3 +99,26 @@ def has_pdf_javascript(file_path: str | Path) -> bool:
         data = file.read()
 
     return PDF_JS_NAME_PATTERN.search(data) is not None
+
+PDF_DANGEROUS_ACTION_PATTERN = re.compile(
+    rb"/(?:OpenAction|Launch|AA)(?![A-Za-z0-9_])"
+)
+
+
+def has_pdf_dangerous_actions(file_path: str | Path) -> bool:
+    """
+    Detect potentially dangerous PDF action names.
+
+    This is a heuristic scan, not full PDF parsing.
+    No PDF actions are executed.
+    """
+
+    if not validate_file(file_path):
+        raise ValueError("Invalid file path.")
+
+    path = Path(file_path).expanduser()
+
+    with path.open("rb") as file:
+        data = file.read()
+
+    return PDF_DANGEROUS_ACTION_PATTERN.search(data) is not None

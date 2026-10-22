@@ -160,3 +160,45 @@ def test_pdf_javascript_missing_file(tmp_path: Path):
 
     with pytest.raises(ValueError, match="Invalid file path"):
         has_pdf_javascript(file_path)
+        
+from ravshield.intel.file.pdf import has_pdf_dangerous_actions
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"%PDF-1.7\n/OpenAction 5 0 R\n%%EOF",
+        b"%PDF-1.7\n/S /Launch\n%%EOF",
+        b"%PDF-1.7\n/AA << /O 3 0 R >>\n%%EOF",
+        b"%PDF-1.7\n/OpenAction /Launch\n%%EOF",
+    ],
+)
+def test_pdf_dangerous_actions_detected(tmp_path: Path, content: bytes):
+    file_path = tmp_path / "dangerous.pdf"
+    file_path.write_bytes(content)
+
+    assert has_pdf_dangerous_actions(file_path) is True
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"%PDF-1.7\n/Type /Catalog\n%%EOF",
+        b"%PDF-1.7\n/OpenActionHandler\n%%EOF",
+        b"%PDF-1.7\n/Launcher\n%%EOF",
+        b"%PDF-1.7\n/AAHandler\n%%EOF",
+        b"%PDF-1.7\nThis document mentions OpenAction\n%%EOF",
+    ],
+)
+def test_pdf_dangerous_actions_not_detected(tmp_path: Path, content: bytes):
+    file_path = tmp_path / "normal.pdf"
+    file_path.write_bytes(content)
+
+    assert has_pdf_dangerous_actions(file_path) is False
+
+
+def test_pdf_dangerous_actions_missing_file(tmp_path: Path):
+    file_path = tmp_path / "missing.pdf"
+
+    with pytest.raises(ValueError, match="Invalid file path"):
+        has_pdf_dangerous_actions(file_path)
