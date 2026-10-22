@@ -168,3 +168,26 @@ def has_pdf_external_links(file_path: str | Path) -> bool:
         data = file.read()
 
     return PDF_URI_PATTERN.search(data) is not None
+
+PDF_SUBMIT_FORM_PATTERN = re.compile(
+    rb"/SubmitForm(?=[\x00\x09\x0A\x0C\x0D\x20()<>\[\]{}/%])"
+)
+
+
+def has_pdf_submit_form(file_path: str | Path) -> bool:
+    """
+    Detect possible SubmitForm actions in PDF files.
+
+    This is a heuristic scan, not full PDF parsing.
+    No forms are submitted and no network requests are made.
+    """
+
+    if not validate_file(file_path):
+        raise ValueError("Invalid file path.")
+
+    path = Path(file_path).expanduser()
+
+    with path.open("rb") as file:
+        data = file.read()
+
+    return PDF_SUBMIT_FORM_PATTERN.search(data) is not None

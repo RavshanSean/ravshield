@@ -286,3 +286,45 @@ def test_pdf_external_links_missing_file(tmp_path: Path):
 
     with pytest.raises(ValueError, match="Invalid file path"):
         has_pdf_external_links(file_path)
+        
+from ravshield.intel.file.pdf import has_pdf_submit_form
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"%PDF-1.7\n/S /SubmitForm\n%%EOF",
+        b"%PDF-1.7\n/A << /S /SubmitForm /F (https://example.com) >>\n%%EOF",
+        b"%PDF-1.7\n/SubmitForm\n%%EOF",
+        b"%PDF-1.7\n/SubmitForm<< /F (https://example.com) >>\n%%EOF",
+    ],
+)
+def test_pdf_submit_form_detected(tmp_path: Path, content: bytes):
+    file_path = tmp_path / "submit.pdf"
+    file_path.write_bytes(content)
+
+    assert has_pdf_submit_form(file_path) is True
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"%PDF-1.7\n/Type /Catalog\n%%EOF",
+        b"%PDF-1.7\n/SubmitFormHandler\n%%EOF",
+        b"%PDF-1.7\n/SubmitFormAction\n%%EOF",
+        b"%PDF-1.7\nThis document mentions SubmitForm\n%%EOF",
+        b"%PDF-1.7\n%%EOF",
+    ],
+)
+def test_pdf_submit_form_not_detected(tmp_path: Path, content: bytes):
+    file_path = tmp_path / "normal.pdf"
+    file_path.write_bytes(content)
+
+    assert has_pdf_submit_form(file_path) is False
+
+
+def test_pdf_submit_form_missing_file(tmp_path: Path):
+    file_path = tmp_path / "missing.pdf"
+
+    with pytest.raises(ValueError, match="Invalid file path"):
+        has_pdf_submit_form(file_path)
