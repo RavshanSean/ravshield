@@ -4,412 +4,679 @@ import pytest
 
 from ravshield.intel.file.pdf import has_pdf_signature
 
-
 def test_file_with_pdf_signature_is_detected(tmp_path: Path):
+
     file_path = tmp_path / "sample.pdf"
+
     file_path.write_bytes(b"%PDF-1.7\n")
 
     assert has_pdf_signature(file_path) is True
 
-
 def test_file_without_pdf_signature_is_rejected(tmp_path: Path):
+
     file_path = tmp_path / "fake.pdf"
+
     file_path.write_bytes(b"NOT A PDF FILE")
 
     assert has_pdf_signature(file_path) is False
 
-
 def test_pdf_signature_does_not_depend_on_extension(tmp_path: Path):
+
     file_path = tmp_path / "sample.txt"
+
     file_path.write_bytes(b"%PDF-1.7\n")
 
     assert has_pdf_signature(file_path) is True
 
-
 def test_missing_pdf_file_raises_value_error(tmp_path: Path):
+
     file_path = tmp_path / "missing.pdf"
 
     with pytest.raises(ValueError, match="Invalid file path"):
+
         has_pdf_signature(file_path)
 
-
 def test_truncated_pdf_signature_is_rejected(tmp_path: Path):
+
     file_path = tmp_path / "truncated.pdf"
+
     file_path.write_bytes(b"%PDF")
 
     assert has_pdf_signature(file_path) is False
-    
+
 from ravshield.intel.file.pdf import get_pdf_version
 
-
 @pytest.mark.parametrize(
+
     "version",
+
     ["1.0", "1.4", "1.7", "2.0"],
+
 )
+
 def test_get_pdf_version_reads_valid_header(
+
     tmp_path: Path,
+
     version: str,
+
 ):
+
     file_path = tmp_path / "sample.pdf"
+
     file_path.write_bytes(f"%PDF-{version}\n".encode("ascii"))
 
     assert get_pdf_version(file_path) == version
 
-
 @pytest.mark.parametrize(
+
     "header",
+
     [
+
         b"NOT A PDF",
+
         b"%PDF-",
+
         b"%PDF-1.",
+
         b"%PDF-3.0",
+
         b"%PDF-1.A",
+
         b"%PDF-1-7",
+
     ],
+
 )
+
 def test_get_pdf_version_rejects_invalid_header(
+
     tmp_path: Path,
+
     header: bytes,
+
 ):
+
     file_path = tmp_path / "invalid.pdf"
+
     file_path.write_bytes(header)
 
     with pytest.raises(ValueError, match="Invalid PDF version header"):
+
         get_pdf_version(file_path)
 
-
 def test_get_pdf_version_rejects_missing_file(tmp_path: Path):
+
     file_path = tmp_path / "missing.pdf"
 
     with pytest.raises(ValueError, match="Invalid file path"):
+
         get_pdf_version(file_path)
-        
+
 from ravshield.intel.file.pdf import has_pdf_eof_marker
 
-
 def test_pdf_eof_marker_is_detected(tmp_path: Path):
+
     file_path = tmp_path / "valid.pdf"
+
     file_path.write_bytes(b"%PDF-1.7\n%%EOF\n")
 
     assert has_pdf_eof_marker(file_path) is True
 
-
 def test_pdf_without_eof_marker_is_rejected(tmp_path: Path):
+
     file_path = tmp_path / "missing_eof.pdf"
+
     file_path.write_bytes(b"%PDF-1.7\nSome PDF data")
 
     assert has_pdf_eof_marker(file_path) is False
 
-
 def test_pdf_eof_marker_with_trailing_whitespace(tmp_path: Path):
+
     file_path = tmp_path / "trailing.pdf"
+
     file_path.write_bytes(b"%PDF-1.7\n%%EOF\n\n   ")
 
     assert has_pdf_eof_marker(file_path) is True
 
-
 def test_pdf_eof_marker_outside_last_1024_bytes(tmp_path: Path):
+
     file_path = tmp_path / "distant_eof.pdf"
+
     file_path.write_bytes(b"%PDF-1.7\n%%EOF" + b"X" * 2048)
 
     assert has_pdf_eof_marker(file_path) is False
 
-
 def test_missing_pdf_file_eof_raises_value_error(tmp_path: Path):
+
     file_path = tmp_path / "missing.pdf"
 
     with pytest.raises(ValueError, match="Invalid file path"):
+
         has_pdf_eof_marker(file_path)
-        
+
 from ravshield.intel.file.pdf import has_pdf_javascript
 
-
 @pytest.mark.parametrize(
+
     "content",
+
     [
+
         b"%PDF-1.7\n/JavaScript\n%%EOF",
+
         b"%PDF-1.7\n/JS (app.alert('Hello'))\n%%EOF",
+
         b"%PDF-1.7\n/S /JavaScript\n/JS (test)\n%%EOF",
+
     ],
+
 )
+
 def test_pdf_javascript_detected(tmp_path: Path, content: bytes):
+
     file_path = tmp_path / "javascript.pdf"
+
     file_path.write_bytes(content)
 
     assert has_pdf_javascript(file_path) is True
 
-
 @pytest.mark.parametrize(
+
     "content",
+
     [
+
         b"%PDF-1.7\n/Type /Catalog\n%%EOF",
+
         b"%PDF-1.7\n/JavaScriptAction\n%%EOF",
+
         b"%PDF-1.7\n/JSCode\n%%EOF",
+
         b"%PDF-1.7\nThis document contains JavaScript\n%%EOF",
+
     ],
+
 )
+
 def test_pdf_javascript_not_detected(tmp_path: Path, content: bytes):
+
     file_path = tmp_path / "safe.pdf"
+
     file_path.write_bytes(content)
 
     assert has_pdf_javascript(file_path) is False
 
-
 def test_pdf_javascript_missing_file(tmp_path: Path):
+
     file_path = tmp_path / "missing.pdf"
 
     with pytest.raises(ValueError, match="Invalid file path"):
+
         has_pdf_javascript(file_path)
-        
+
 from ravshield.intel.file.pdf import has_pdf_dangerous_actions
 
-
 @pytest.mark.parametrize(
+
     "content",
+
     [
+
         b"%PDF-1.7\n/OpenAction 5 0 R\n%%EOF",
+
         b"%PDF-1.7\n/S /Launch\n%%EOF",
+
         b"%PDF-1.7\n/AA << /O 3 0 R >>\n%%EOF",
+
         b"%PDF-1.7\n/OpenAction /Launch\n%%EOF",
+
     ],
+
 )
+
 def test_pdf_dangerous_actions_detected(tmp_path: Path, content: bytes):
+
     file_path = tmp_path / "dangerous.pdf"
+
     file_path.write_bytes(content)
 
     assert has_pdf_dangerous_actions(file_path) is True
 
-
 @pytest.mark.parametrize(
+
     "content",
+
     [
+
         b"%PDF-1.7\n/Type /Catalog\n%%EOF",
+
         b"%PDF-1.7\n/OpenActionHandler\n%%EOF",
+
         b"%PDF-1.7\n/Launcher\n%%EOF",
+
         b"%PDF-1.7\n/AAHandler\n%%EOF",
+
         b"%PDF-1.7\nThis document mentions OpenAction\n%%EOF",
+
     ],
+
 )
+
 def test_pdf_dangerous_actions_not_detected(tmp_path: Path, content: bytes):
+
     file_path = tmp_path / "normal.pdf"
+
     file_path.write_bytes(content)
 
     assert has_pdf_dangerous_actions(file_path) is False
 
-
 def test_pdf_dangerous_actions_missing_file(tmp_path: Path):
+
     file_path = tmp_path / "missing.pdf"
 
     with pytest.raises(ValueError, match="Invalid file path"):
+
         has_pdf_dangerous_actions(file_path)
-        
+
 from ravshield.intel.file.pdf import has_pdf_embedded_files
 
-
 @pytest.mark.parametrize(
+
     "content",
+
     [
+
         b"%PDF-1.7\n/Type /EmbeddedFile\n%%EOF",
+
         b"%PDF-1.7\n/Names << /EmbeddedFiles 5 0 R >>\n%%EOF",
+
         b"%PDF-1.7\n/EmbeddedFile\n%%EOF",
+
         b"%PDF-1.7\n/EmbeddedFiles\n%%EOF",
+
     ],
+
 )
+
 def test_pdf_embedded_files_detected(tmp_path: Path, content: bytes):
+
     file_path = tmp_path / "embedded.pdf"
+
     file_path.write_bytes(content)
 
     assert has_pdf_embedded_files(file_path) is True
 
-
 @pytest.mark.parametrize(
+
     "content",
+
     [
+
         b"%PDF-1.7\n/Type /Catalog\n%%EOF",
+
         b"%PDF-1.7\n/EmbeddedFileHandler\n%%EOF",
+
         b"%PDF-1.7\n/EmbeddedFilesList\n%%EOF",
+
         b"%PDF-1.7\nThis document mentions EmbeddedFile\n%%EOF",
+
         b"%PDF-1.7\n%%EOF",
+
     ],
+
 )
+
 def test_pdf_embedded_files_not_detected(tmp_path: Path, content: bytes):
+
     file_path = tmp_path / "normal.pdf"
+
     file_path.write_bytes(content)
 
     assert has_pdf_embedded_files(file_path) is False
 
-
 def test_pdf_embedded_files_missing_file(tmp_path: Path):
+
     file_path = tmp_path / "missing.pdf"
 
     with pytest.raises(ValueError, match="Invalid file path"):
+
         has_pdf_embedded_files(file_path)
-        
+
 from ravshield.intel.file.pdf import has_pdf_external_links
 
-
 @pytest.mark.parametrize(
+
     "content",
+
     [
+
         b"%PDF-1.7\n/A << /S /URI /URI (https://example.com) >>\n%%EOF",
+
         b"%PDF-1.7\n/URI (http://example.org)\n%%EOF",
+
         b"%PDF-1.7\n/URI<6874747073>\n%%EOF",
+
         b"%PDF-1.7\n/URI\n(https://example.com)\n%%EOF",
+
     ],
+
 )
+
 def test_pdf_external_links_detected(tmp_path: Path, content: bytes):
+
     file_path = tmp_path / "links.pdf"
+
     file_path.write_bytes(content)
 
     assert has_pdf_external_links(file_path) is True
 
-
 @pytest.mark.parametrize(
+
     "content",
+
     [
+
         b"%PDF-1.7\n/Type /Catalog\n%%EOF",
+
         b"%PDF-1.7\n/URILoader\n%%EOF",
+
         b"%PDF-1.7\n/URIHandler\n%%EOF",
+
         b"%PDF-1.7\nThis document mentions URI\n%%EOF",
+
         b"%PDF-1.7\n%%EOF",
+
     ],
+
 )
+
 def test_pdf_external_links_not_detected(tmp_path: Path, content: bytes):
+
     file_path = tmp_path / "normal.pdf"
+
     file_path.write_bytes(content)
 
     assert has_pdf_external_links(file_path) is False
 
-
 def test_pdf_external_links_missing_file(tmp_path: Path):
+
     file_path = tmp_path / "missing.pdf"
 
     with pytest.raises(ValueError, match="Invalid file path"):
+
         has_pdf_external_links(file_path)
-        
+
 from ravshield.intel.file.pdf import has_pdf_submit_form
 
-
 @pytest.mark.parametrize(
+
     "content",
+
     [
+
         b"%PDF-1.7\n/S /SubmitForm\n%%EOF",
+
         b"%PDF-1.7\n/A << /S /SubmitForm /F (https://example.com) >>\n%%EOF",
+
         b"%PDF-1.7\n/SubmitForm\n%%EOF",
+
         b"%PDF-1.7\n/SubmitForm<< /F (https://example.com) >>\n%%EOF",
+
     ],
+
 )
+
 def test_pdf_submit_form_detected(tmp_path: Path, content: bytes):
+
     file_path = tmp_path / "submit.pdf"
+
     file_path.write_bytes(content)
 
     assert has_pdf_submit_form(file_path) is True
 
-
 @pytest.mark.parametrize(
+
     "content",
+
     [
+
         b"%PDF-1.7\n/Type /Catalog\n%%EOF",
+
         b"%PDF-1.7\n/SubmitFormHandler\n%%EOF",
+
         b"%PDF-1.7\n/SubmitFormAction\n%%EOF",
+
         b"%PDF-1.7\nThis document mentions SubmitForm\n%%EOF",
+
         b"%PDF-1.7\n%%EOF",
+
     ],
+
 )
+
 def test_pdf_submit_form_not_detected(tmp_path: Path, content: bytes):
+
     file_path = tmp_path / "normal.pdf"
+
     file_path.write_bytes(content)
 
     assert has_pdf_submit_form(file_path) is False
 
-
 def test_pdf_submit_form_missing_file(tmp_path: Path):
+
     file_path = tmp_path / "missing.pdf"
 
     with pytest.raises(ValueError, match="Invalid file path"):
+
         has_pdf_submit_form(file_path)
-        
+
 from ravshield.intel.file.pdf import read_pdf_safely, MAX_PDF_SCAN_SIZE
 
-
 def test_read_pdf_safely_valid_file(tmp_path: Path):
+
     file_path = tmp_path / "valid.pdf"
+
     content = b"%PDF-1.7\nHello\n%%EOF"
+
     file_path.write_bytes(content)
 
     assert read_pdf_safely(file_path) == content
 
-
 def test_read_pdf_safely_empty_file(tmp_path: Path):
+
     file_path = tmp_path / "empty.pdf"
+
     file_path.write_bytes(b"")
 
     assert read_pdf_safely(file_path) == b""
 
-
 def test_read_pdf_safely_exact_limit(tmp_path: Path):
+
     file_path = tmp_path / "exact.pdf"
+
     file_path.write_bytes(b"A" * 100)
 
     assert read_pdf_safely(file_path, max_size=100) == b"A" * 100
 
-
 def test_read_pdf_safely_exceeds_limit(tmp_path: Path):
+
     file_path = tmp_path / "large.pdf"
+
     file_path.write_bytes(b"A" * 101)
 
     with pytest.raises(ValueError, match="PDF exceeds maximum scan size"):
+
         read_pdf_safely(file_path, max_size=100)
 
-
 @pytest.mark.parametrize("max_size", [0, -1, 1.5, "100", None, True])
+
 def test_read_pdf_safely_invalid_limit(tmp_path: Path, max_size):
+
     file_path = tmp_path / "valid.pdf"
+
     file_path.write_bytes(b"%PDF-1.7")
 
     with pytest.raises(ValueError, match="Invalid PDF size limit"):
+
         read_pdf_safely(file_path, max_size=max_size)
 
-
 def test_read_pdf_safely_missing_file(tmp_path: Path):
+
     file_path = tmp_path / "missing.pdf"
 
     with pytest.raises(ValueError, match="Invalid file path"):
+
         read_pdf_safely(file_path)
 
-
 def test_default_pdf_scan_limit():
+
     assert MAX_PDF_SCAN_SIZE == 50 * 1024 * 1024
-    
+
 @pytest.mark.parametrize(
+
     "detector",
+
     [
+
         has_pdf_javascript,
+
         has_pdf_dangerous_actions,
+
         has_pdf_embedded_files,
+
         has_pdf_external_links,
+
         has_pdf_submit_form,
+
     ],
+
 )
+
 def test_pdf_detectors_reject_oversized_files(
+
     tmp_path: Path,
+
     monkeypatch,
+
     detector,
+
 ):
+
     import ravshield.intel.file.pdf as pdf_module
 
     file_path = tmp_path / "oversized.pdf"
+
     file_path.write_bytes(b"%PDF-1.7\n" + b"A" * 100)
 
     original_reader = pdf_module.read_pdf_safely
 
     def limited_reader(path):
+
         return original_reader(path, max_size=50)
 
     monkeypatch.setattr(pdf_module, "read_pdf_safely", limited_reader)
 
     with pytest.raises(
+
         ValueError,
+
         match="PDF exceeds maximum scan size",
+
     ):
+
         detector(file_path)
+
+from dataclasses import FrozenInstanceError
+from ravshield.intel.file.pdf import analyze_pdf
+from ravshield.intel.file.pdf_models import PDFAnalysisResult
+
+
+def test_analyze_pdf_reports_all_indicators(tmp_path: Path):
+    path = tmp_path / "all.pdf"
+    path.write_bytes(
+        b"%PDF-1.7\n/JS /OpenAction /EmbeddedFile /URI (https://example.com) "
+        b"/SubmitForm\n%%EOF\n"
+    )
+    result = analyze_pdf(path)
+    assert result == PDFAnalysisResult(True, "1.7", True, True, True, True, True, True)
+
+
+def test_analyze_pdf_non_pdf_has_no_findings(tmp_path: Path):
+    path = tmp_path / "not_pdf.txt"
+    path.write_bytes(b"/JS /Launch /EmbeddedFile /URI /SubmitForm %%EOF")
+    assert analyze_pdf(path) == PDFAnalysisResult(
+        False, None, False, False, False, False, False, False
+    )
+
+
+def test_analyze_pdf_invalid_version_preserves_signature(tmp_path: Path):
+    path = tmp_path / "invalid.pdf"
+    path.write_bytes(b"%PDF-9.9\n/JS\n%%EOF")
+    result = analyze_pdf(path)
+    assert result.is_pdf is True
+    assert result.version is None
+    assert result.has_javascript is True
+
+
+def test_analyze_pdf_empty_file(tmp_path: Path):
+    path = tmp_path / "empty.pdf"
+    path.write_bytes(b"")
+    assert analyze_pdf(path).is_pdf is False
+
+
+def test_analyze_pdf_missing_file(tmp_path: Path):
+    with pytest.raises(ValueError, match="Invalid file path"):
+        analyze_pdf(tmp_path / "missing.pdf")
+
+
+def test_analyze_pdf_single_read(tmp_path: Path, monkeypatch):
+    import ravshield.intel.file.pdf as pdf_module
+
+    path = tmp_path / "valid.pdf"
+    path.write_bytes(b"%PDF-2.0\n%%EOF")
+    original = pdf_module.read_pdf_safely
+    calls = []
+
+    def spy(file_path):
+        calls.append(file_path)
+        return original(file_path)
+
+    monkeypatch.setattr(pdf_module, "read_pdf_safely", spy)
+    assert analyze_pdf(path).version == "2.0"
+    assert calls == [path]
+
+
+def test_analyze_pdf_rejects_oversized(tmp_path: Path, monkeypatch):
+    import ravshield.intel.file.pdf as pdf_module
+
+    path = tmp_path / "large.pdf"
+    path.write_bytes(b"%PDF-1.7\n" + b"X" * 100)
+    original = pdf_module.read_pdf_safely
+    monkeypatch.setattr(
+        pdf_module, "read_pdf_safely", lambda file_path: original(file_path, max_size=50)
+    )
+    with pytest.raises(ValueError, match="PDF exceeds maximum scan size"):
+        analyze_pdf(path)
+
+
+def test_pdf_result_is_immutable():
+    result = PDFAnalysisResult(False, None, False, False, False, False, False, False)
+    with pytest.raises(FrozenInstanceError):
+        result.is_pdf = True
+
+
+@pytest.mark.parametrize(
+    "marker, expected",
+    [
+        (b"/JSCode", False),
+        (b"/JS", True),
+        (b"/JS/Next", True),
+        (b"/JavaScriptAction", False),
+    ],
+)
+def test_pdf_javascript_name_boundaries(tmp_path: Path, marker: bytes, expected: bool):
+    path = tmp_path / "names.pdf"
+    path.write_bytes(b"%PDF-1.7\n" + marker + b"\n%%EOF")
+    assert analyze_pdf(path).has_javascript is expected

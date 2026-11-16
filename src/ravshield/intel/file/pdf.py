@@ -1,46 +1,46 @@
+"""Bounded, non-executing heuristic checks for PDF candidates.
+
+These checks are not a PDF parser and do not determine whether a file is safe.
+"""
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
+from ravshield.intel.file.pdf_models import PDFAnalysisResult
 from ravshield.intel.file.validator import validate_file
 
-
 PDF_SIGNATURE = b"%PDF-"
+MAX_PDF_SCAN_SIZE = 50 * 1024 * 1024
+
+# A PDF name ends at whitespace or a PDF delimiter. This is still a byte-level
+# heuristic: comments, streams, and encoded names are not parsed.
+_PDF_NAME_END = rb"(?=[\x00\x09\x0a\x0c\x0d\x20()<>{}\[\]/%]|$)"
+PDF_JS_NAME_PATTERN = re.compile(rb"/(?:JavaScript|JS)" + _PDF_NAME_END)
+PDF_DANGEROUS_ACTION_PATTERN = re.compile(rb"/(?:OpenAction|Launch|AA)" + _PDF_NAME_END)
+PDF_EMBEDDED_FILE_PATTERN = re.compile(rb"/(?:EmbeddedFile|EmbeddedFiles)" + _PDF_NAME_END)
+PDF_URI_PATTERN = re.compile(rb"/URI" + _PDF_NAME_END)
+PDF_SUBMIT_FORM_PATTERN = re.compile(rb"/SubmitForm" + _PDF_NAME_END)
 
 
-def has_pdf_signature(file_path: str | Path) -> bool:
-    """
-    Check whether a file starts with a PDF signature.
-
-    A valid signature alone does not prove that
-    the PDF is structurally valid or safe.
-    """
-
+def read_pdf_safely(
+    file_path: str | Path, max_size: int = MAX_PDF_SCAN_SIZE
+) -> bytes:
+    """Read at most max_size + 1 bytes, rejecting oversized inputs."""
+    if not isinstance(max_size, int) or isinstance(max_size, bool) or max_size <= 0:
+        raise ValueError("Invalid PDF size limit.")
     if not validate_file(file_path):
         raise ValueError("Invalid file path.")
-
     path = Path(file_path).expanduser()
-
     with path.open("rb") as file:
-        signature = file.read(len(PDF_SIGNATURE))
+        data = file.read(max_size + 1)
+    if len(data) > max_size:
+        raise ValueError("PDF exceeds maximum scan size.")
+    return data
 
-    return signature == PDF_SIGNATURE
 
-def get_pdf_version(file_path: str | Path) -> str:
-    """
-    Read the PDF version from its header.
-
-    This does not validate the entire PDF structure.
-    """
-
-    if not validate_file(file_path):
-        raise ValueError("Invalid file path.")
-
-    path = Path(file_path).expanduser()
-
-    with path.open("rb") as file:
-        header = file.read(8)
-
+def _pdf_version(data: bytes) -> str:
+    header = data[:8]
     if (
         len(header) != 8
         or not header.startswith(PDF_SIGNATURE)
@@ -49,144 +49,86 @@ def get_pdf_version(file_path: str | Path) -> str:
         or not header[7:8].isdigit()
     ):
         raise ValueError("Invalid PDF version header.")
-
     return header[5:8].decode("ascii")
 
-def has_pdf_eof_marker(file_path: str | Path) -> bool:
-    """
-    Check whether a PDF EOF marker exists near the end of the file.
 
-    This does not validate the entire PDF structure.
-    """
-
+def has_pdf_signature(file_path: str | Path) -> bool:
+    """Check the first five bytes without reading the whole file."""
     if not validate_file(file_path):
         raise ValueError("Invalid file path.")
+    with Path(file_path).expanduser().open("rb") as file:
+        return file.read(len(PDF_SIGNATURE)) == PDF_SIGNATURE
 
-    path = Path(file_path).expanduser()
 
-    with path.open("rb") as file:
+def get_pdf_version(file_path: str | Path) -> str:
+    """Read a basic PDF header version, without structural validation."""
+    if not validate_file(file_path):
+        raise ValueError("Invalid file path.")
+    with Path(file_path).expanduser().open("rb") as file:
+        return _pdf_version(file.read(8))
+
+
+def has_pdf_eof_marker(file_path: str | Path) -> bool:
+    """Check for %%EOF in the final 1024 bytes."""
+    if not validate_file(file_path):
+        raise ValueError("Invalid file path.")
+    with Path(file_path).expanduser().open("rb") as file:
         file.seek(0, 2)
-        file_size = file.tell()
-
-        read_size = min(file_size, 1024)
-        file.seek(-read_size, 2)
-        tail = file.read(read_size)
-
-    return b"%%EOF" in tail
-
-import re
-
-
-PDF_JS_NAME_PATTERN = re.compile(
-    rb"/(?:JavaScript|JS)(?![A-Za-z0-9_])"
-)
+        size = file.tell()
+        file.seek(-min(size, 1024), 2)
+        return b"%%EOF" in file.read(1024)
 
 
 def has_pdf_javascript(file_path: str | Path) -> bool:
-    """
-    Detect possible JavaScript-related PDF names.
-
-    This is a heuristic scan, not full PDF parsing.
-    JavaScript is never executed.
-    """
-
-    data = read_pdf_safely(file_path)
-
-    return PDF_JS_NAME_PATTERN.search(data) is not None
-
-PDF_DANGEROUS_ACTION_PATTERN = re.compile(
-    rb"/(?:OpenAction|Launch|AA)(?![A-Za-z0-9_])"
-)
+    return PDF_JS_NAME_PATTERN.search(read_pdf_safely(file_path)) is not None
 
 
 def has_pdf_dangerous_actions(file_path: str | Path) -> bool:
-    """
-    Detect potentially dangerous PDF action names.
-
-    This is a heuristic scan, not full PDF parsing.
-    No PDF actions are executed.
-    """
-
-    data = read_pdf_safely(file_path)
-
-    return PDF_DANGEROUS_ACTION_PATTERN.search(data) is not None
-
-PDF_EMBEDDED_FILE_PATTERN = re.compile(
-    rb"/(?:EmbeddedFile|EmbeddedFiles)(?![A-Za-z0-9_])"
-)
+    return PDF_DANGEROUS_ACTION_PATTERN.search(read_pdf_safely(file_path)) is not None
 
 
 def has_pdf_embedded_files(file_path: str | Path) -> bool:
-    """
-    Detect possible embedded-file indicators in a PDF.
-
-    This is a heuristic scan, not full PDF parsing.
-    Embedded files are never extracted or executed.
-    """
-
-    data = read_pdf_safely(file_path)
-
-    return PDF_EMBEDDED_FILE_PATTERN.search(data) is not None
-
-PDF_URI_PATTERN = re.compile(
-    rb"/URI(?=[\x00\x09\x0A\x0C\x0D\x20()<>\[\]{}/%])"
-)
+    return PDF_EMBEDDED_FILE_PATTERN.search(read_pdf_safely(file_path)) is not None
 
 
 def has_pdf_external_links(file_path: str | Path) -> bool:
-    """
-    Detect possible URI entries in PDF files.
-
-    This is a heuristic scan, not full PDF parsing.
-    External links are never opened or visited.
-    """
-
-    data = read_pdf_safely(file_path)
-
-    return PDF_URI_PATTERN.search(data) is not None
-
-PDF_SUBMIT_FORM_PATTERN = re.compile(
-    rb"/SubmitForm(?=[\x00\x09\x0A\x0C\x0D\x20()<>\[\]{}/%])"
-)
+    return PDF_URI_PATTERN.search(read_pdf_safely(file_path)) is not None
 
 
 def has_pdf_submit_form(file_path: str | Path) -> bool:
-    """
-    Detect possible SubmitForm actions in PDF files.
+    return PDF_SUBMIT_FORM_PATTERN.search(read_pdf_safely(file_path)) is not None
 
-    This is a heuristic scan, not full PDF parsing.
-    No forms are submitted and no network requests are made.
-    """
 
+def analyze_pdf(file_path: str | Path) -> PDFAnalysisResult:
+    """Scan once and return independent heuristic indicators.
+
+    Non-PDF files return is_pdf=False with no inferred findings. A PDF
+    signature with an invalid version keeps is_pdf=True and version=None.
+    """
     data = read_pdf_safely(file_path)
-
-    return PDF_SUBMIT_FORM_PATTERN.search(data) is not None
-
-MAX_PDF_SCAN_SIZE = 50 * 1024 * 1024  # 50 MiB
-
-
-def read_pdf_safely(
-    file_path: str | Path,
-    max_size: int = MAX_PDF_SCAN_SIZE,
-) -> bytes:
-    """
-    Read a PDF candidate with a strict size limit.
-
-    This function does not parse or execute PDF content.
-    """
-
-    if not isinstance(max_size, int) or isinstance(max_size, bool) or max_size <= 0:
-        raise ValueError("Invalid PDF size limit.")
-
-    if not validate_file(file_path):
-        raise ValueError("Invalid file path.")
-
-    path = Path(file_path).expanduser()
-
-    with path.open("rb") as file:
-        data = file.read(max_size + 1)
-
-    if len(data) > max_size:
-        raise ValueError("PDF exceeds maximum scan size.")
-
-    return data
+    is_pdf = data.startswith(PDF_SIGNATURE)
+    if not is_pdf:
+        return PDFAnalysisResult(
+            is_pdf=False,
+            version=None,
+            has_eof_marker=False,
+            has_javascript=False,
+            has_dangerous_actions=False,
+            has_embedded_files=False,
+            has_external_links=False,
+            has_submit_form=False,
+        )
+    try:
+        version = _pdf_version(data)
+    except ValueError:
+        version = None
+    return PDFAnalysisResult(
+        is_pdf=True,
+        version=version,
+        has_eof_marker=b"%%EOF" in data[-1024:],
+        has_javascript=PDF_JS_NAME_PATTERN.search(data) is not None,
+        has_dangerous_actions=PDF_DANGEROUS_ACTION_PATTERN.search(data) is not None,
+        has_embedded_files=PDF_EMBEDDED_FILE_PATTERN.search(data) is not None,
+        has_external_links=PDF_URI_PATTERN.search(data) is not None,
+        has_submit_form=PDF_SUBMIT_FORM_PATTERN.search(data) is not None,
+    )

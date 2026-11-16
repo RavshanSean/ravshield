@@ -1,3 +1,4 @@
+"""Result models for PDF heuristic scanning."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -5,7 +6,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class PDFAnalysisResult:
-    """Structured results of PDF security checks."""
+    """Independent indicators, not a verdict that a PDF is safe or malicious."""
 
     is_pdf: bool
     version: str | None
