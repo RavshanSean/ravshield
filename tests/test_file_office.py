@@ -219,3 +219,65 @@ def test_normal_compression_ratio_does_not_warn(make_office, monkeypatch):
     monkeypatch.setattr(office_module, "MAX_COMPRESSION_RATIO", 10000)
     path = make_office({"data.txt": b"A" * 5000})
     assert "High ZIP compression ratio detected." not in analyze_office(path).warnings
+
+
+@pytest.mark.parametrize(
+    "member",
+    ["word/activeX/activeX1.xml", "xl/activeX/activeX2.bin", "ppt/activeX/activeX3.xml"],
+)
+def test_v3_detects_activex_parts(make_office, member):
+    result = analyze_office(make_office({member: b"data"}))
+    assert result.has_activex is True
+    assert result.has_ole_objects is False
+
+
+@pytest.mark.parametrize(
+    "member",
+    ["word/embeddings/oleObject1.bin", "xl/embeddings/oleObject2.bin", "ppt/embeddings/oleObject3.bin"],
+)
+def test_v3_detects_ole_objects(make_office, member):
+    result = analyze_office(make_office({member: b"data"}))
+    assert result.has_ole_objects is True
+    assert result.has_embedded_objects is True
+
+
+@pytest.mark.parametrize(
+    "member",
+    ["word/vbaProject.bin", "xl/vbaProject.bin", "ppt/vbaProject.bin"],
+)
+def test_v3_detects_vba_project(make_office, member):
+    result = analyze_office(make_office({member: b"data"}))
+    assert result.has_vba_project is True
+    assert result.has_macros is True
+
+
+def test_v3_ignores_similar_part_names(make_office):
+    result = analyze_office(make_office({
+        "word/activeX_backup/control.xml": b"x",
+        "word/embeddings/oleObject1.bin.bak": b"x",
+        "word/vbaProject.bin.backup": b"x",
+    }))
+    assert result.has_activex is False
+    assert result.has_ole_objects is False
+    assert result.has_vba_project is False
+
+
+def test_v3_combined_indicators(make_office):
+    result = analyze_office(make_office({
+        "[Content_Types].xml": b"<Types/>",
+        "word/document.xml": b"<document/>",
+        "word/activeX/activeX1.xml": b"<control/>",
+        "word/embeddings/oleObject1.bin": b"ole",
+        "word/vbaProject.bin": b"vba",
+    }))
+    assert result.is_ooxml is True
+    assert result.has_activex is True
+    assert result.has_ole_objects is True
+    assert result.has_vba_project is True
+
+
+def test_v3_empty_archive_has_no_new_indicators(make_office):
+    result = analyze_office(make_office({}))
+    assert result.has_activex is False
+    assert result.has_ole_objects is False
+    assert result.has_vba_project is False
