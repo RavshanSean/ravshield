@@ -157,3 +157,65 @@ def test_empty_zip_has_no_findings(make_office):
     assert result.has_embedded_objects is False
     assert result.has_external_relationships is False
     assert result.encrypted is False
+
+
+@pytest.mark.parametrize(
+    "relationship_xml",
+    [
+        b'<Relationships><!-- <Relationship TargetMode="External"/> --></Relationships>',
+        b'<Relationships><Note>TargetMode="External"</Note></Relationships>',
+        b'<Relationships><Relationship TargetMode="Internal"/></Relationships>',
+    ],
+)
+def test_external_relationship_ignores_comments_and_text(make_office, relationship_xml):
+    path = make_office({"word/_rels/document.xml.rels": relationship_xml})
+    assert analyze_office(path).has_external_relationships is False
+
+
+def test_external_relationship_supports_namespaced_xml(make_office):
+    xml = (
+        b'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        b'<Relationship TargetMode="External" Target="https://example.org"/>'
+        b'</Relationships>'
+    )
+    path = make_office({"word/_rels/document.xml.rels": xml})
+    assert analyze_office(path).has_external_relationships is True
+
+
+def test_malformed_relationship_xml_warns(make_office):
+    path = make_office({"word/_rels/document.xml.rels": b"<Relationships><Relationship"})
+    result = analyze_office(path)
+    assert result.has_external_relationships is False
+    assert "Malformed relationship XML not inspected." in result.warnings
+
+
+@pytest.mark.parametrize("unsafe_name", ["../outside.txt", "/absolute.txt", "word\\evil.txt"])
+def test_unsafe_zip_entry_path_warns(make_office, unsafe_name):
+    path = make_office({unsafe_name: b"data"})
+    assert "Potentially unsafe ZIP entry path detected." in analyze_office(path).warnings
+
+
+def test_duplicate_zip_entry_names_warn(tmp_path: Path):
+    import warnings
+
+    path = tmp_path / "duplicate.docx"
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        with ZipFile(path, "w", compression=ZIP_DEFLATED) as archive:
+            archive.writestr("word/document.xml", b"one")
+            archive.writestr("word/document.xml", b"two")
+    result = analyze_office(path)
+    assert result.entry_count == 2
+    assert "Duplicate ZIP entry names detected." in result.warnings
+
+
+def test_high_compression_ratio_warns(make_office, monkeypatch):
+    monkeypatch.setattr(office_module, "MAX_COMPRESSION_RATIO", 2)
+    path = make_office({"data.txt": b"A" * 5000})
+    assert "High ZIP compression ratio detected." in analyze_office(path).warnings
+
+
+def test_normal_compression_ratio_does_not_warn(make_office, monkeypatch):
+    monkeypatch.setattr(office_module, "MAX_COMPRESSION_RATIO", 10000)
+    path = make_office({"data.txt": b"A" * 5000})
+    assert "High ZIP compression ratio detected." not in analyze_office(path).warnings

@@ -1,13 +1,10 @@
-"""Bounded, read-only inspection of OOXML Office documents.
-
-This is a ZIP-container heuristic scanner, not a malware verdict or a
-complete OOXML parser. It never extracts files or executes document content.
-"""
+"""Bounded, read-only heuristic inspection of OOXML Office packages."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from xml.etree import ElementTree
 from zipfile import BadZipFile, ZipFile
 
 from ravshield.intel.file.validator import validate_file
@@ -16,6 +13,7 @@ MAX_OFFICE_FILE_SIZE = 50 * 1024 * 1024
 MAX_OFFICE_ENTRIES = 4096
 MAX_OFFICE_UNCOMPRESSED_SIZE = 100 * 1024 * 1024
 MAX_RELATIONSHIP_BYTES = 2 * 1024 * 1024
+MAX_COMPRESSION_RATIO = 1000
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,12 +28,31 @@ class OfficeAnalysisResult:
     warnings: tuple[str, ...]
 
 
-def analyze_office(file_path: str | Path) -> OfficeAnalysisResult:
-    """Inspect an OOXML package without unpacking it onto disk.
+def _unsafe_zip_path(name: str) -> bool:
+    if not name or name.startswith(("/", "\\")) or "\\" in name:
+        return True
+    segments = name.split("/")
+    return any(segment in (".", "..") for segment in segments)
 
-    Raises ValueError for invalid paths, oversized packages, and malformed ZIPs.
-    Encrypted entries are reported but not decrypted. External relationship
-    detection scans bounded relationship XML bytes and may have false positives.
+
+def _has_external_relationship(xml_bytes: bytes) -> bool:
+    root = ElementTree.fromstring(xml_bytes)
+    for element in root.iter():
+        if element.tag.split("}")[-1] != "Relationship":
+            continue
+        if any(
+            key.split("}")[-1] == "TargetMode" and value.lower() == "external"
+            for key, value in element.attrib.items()
+        ):
+            return True
+    return False
+
+
+def analyze_office(file_path: str | Path) -> OfficeAnalysisResult:
+    """Inspect an Office ZIP container without extracting or executing content.
+
+    Raises ValueError on invalid paths, oversized archives or malformed ZIPs.
+    Findings are indicators, not a malware verdict.
     """
     if not validate_file(file_path):
         raise ValueError("Invalid file path.")
@@ -71,6 +88,23 @@ def analyze_office(file_path: str | Path) -> OfficeAnalysisResult:
             has_external_relationships = False
             warnings: list[str] = []
 
+            if any(_unsafe_zip_path(item.filename) for item in entries):
+                warnings.append("Potentially unsafe ZIP entry path detected.")
+
+            normalized_names = [item.filename.lower() for item in entries]
+            if len(normalized_names) != len(set(normalized_names)):
+                warnings.append("Duplicate ZIP entry names detected.")
+
+            if any(
+                item.file_size > 0
+                and (
+                    item.compress_size == 0
+                    or item.file_size / item.compress_size > MAX_COMPRESSION_RATIO
+                )
+                for item in entries
+            ):
+                warnings.append("High ZIP compression ratio detected.")
+
             for item in entries:
                 if not item.filename.lower().endswith(".rels"):
                     continue
@@ -83,16 +117,22 @@ def analyze_office(file_path: str | Path) -> OfficeAnalysisResult:
                 try:
                     with archive.open(item) as part:
                         content = part.read(MAX_RELATIONSHIP_BYTES + 1)
-                except (RuntimeError, BadZipFile, OSError, ValueError) as exc:
-                    warnings.append(f"Relationship part unreadable: {type(exc).__name__}.")
-                    continue
-                # XML attribute values may use either quote style or whitespace.
-                import re
-                if re.search(rb'\bTargetMode\s*=\s*[\"\']External[\"\']', content, re.I):
-                    has_external_relationships = True
+                    if len(content) > MAX_RELATIONSHIP_BYTES:
+                        warnings.append("Relationship part exceeds scan limit.")
+                        continue
+                    if _has_external_relationship(content):
+                        has_external_relationships = True
+                except ElementTree.ParseError:
+                    warnings.append("Malformed relationship XML not inspected.")
+                except (RuntimeError, BadZipFile, OSError, ValueError, NotImplementedError) as exc:
+                    warnings.append(
+                        f"Relationship part unreadable: {type(exc).__name__}."
+                    )
 
             if not is_ooxml:
-                warnings.append("Not a recognized OOXML Word, Excel, or PowerPoint package.")
+                warnings.append(
+                    "Not a recognized OOXML Word, Excel, or PowerPoint package."
+                )
             if encrypted:
                 warnings.append("Encrypted ZIP entries were not inspected.")
 
