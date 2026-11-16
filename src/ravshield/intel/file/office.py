@@ -26,6 +26,9 @@ class OfficeAnalysisResult:
     encrypted: bool
     entry_count: int
     warnings: tuple[str, ...]
+    has_activex: bool = False
+    has_ole_objects: bool = False
+    has_vba_project: bool = False
 
 
 def _unsafe_zip_path(name: str) -> bool:
@@ -82,6 +85,21 @@ def analyze_office(file_path: str | Path) -> OfficeAnalysisResult:
             has_macros = any(name.endswith("vbaproject.bin") for name in names)
             has_embedded_objects = any(
                 "/embeddings/" in f"/{name}" or name.startswith("embeddings/")
+                for name in names
+            )
+            # OOXML package member names are indicators, not proof of execution.
+            has_vba_project = any(
+                name.rsplit("/", 1)[-1] == "vbaproject.bin"
+                for name in names
+            )
+            has_activex = any(
+                name.startswith(("word/activex/", "xl/activex/", "ppt/activex/"))
+                for name in names
+            )
+            has_ole_objects = any(
+                "/embeddings/" in f"/{name}"
+                and name.rsplit("/", 1)[-1].startswith("oleobject")
+                and name.endswith(".bin")
                 for name in names
             )
             encrypted = any(bool(item.flag_bits & 0x1) for item in entries)
@@ -145,6 +163,9 @@ def analyze_office(file_path: str | Path) -> OfficeAnalysisResult:
                 encrypted=encrypted,
                 entry_count=len(entries),
                 warnings=tuple(warnings),
+                has_activex=has_activex,
+                has_ole_objects=has_ole_objects,
+                has_vba_project=has_vba_project,
             )
     except BadZipFile as exc:
         raise ValueError("Invalid Office ZIP container.") from exc
