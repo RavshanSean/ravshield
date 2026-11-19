@@ -12,3 +12,5 @@ requires-python = ">=3.11"
 dev = [
     "pytest>=9.0",
 ]
+[project.scripts]
+ravshield = "ravshield.cli:main"
