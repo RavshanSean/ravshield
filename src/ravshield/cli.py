@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from collections.abc import Sequence
 
 from ravshield.intel.file.report import scan_file
 from ravshield.intel.file.report_explain import explain_security_report
 from ravshield.intel.file.report_json import report_to_json
+from ravshield.batch import MAX_BATCH_FILES, scan_directory
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -17,24 +19,44 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("file", help="Path to a file to analyze")
     scan.add_argument("--json", action="store_true", help="Print a machine-readable JSON report")
     scan.add_argument("--raw", action="store_true", help="Show technical findings instead of explanations")
+    batch = subparsers.add_parser("batch", help="Analyze regular files in one directory (non-recursive)")
+    batch.add_argument("directory", help="Directory containing files to analyze")
+    batch.add_argument("--json", action="store_true", help="Print a machine-readable combined JSON report")
+    batch.add_argument("--raw", action="store_true", help="Show technical findings instead of explanations")
+    batch.add_argument("--limit", type=int, default=MAX_BATCH_FILES, help=f"Maximum files allowed (1-{MAX_BATCH_FILES})")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if args.command != "scan":
-        return 2
+    if args.command == "batch":
+        try:
+            batch = scan_directory(args.directory, raw=args.raw, limit=args.limit)
+        except (OSError, ValueError) as exc:
+            print(f"ravshield: batch failed: {exc}", file=sys.stderr)
+            return 2
+        if args.json:
+            print(json.dumps(batch.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            print(f"Directory: {batch.directory}")
+            for item in batch.results:
+                if item["status"] == "error":
+                    print(f"[ERROR] {item['path']}: {item['error']}")
+                else:
+                    report = item["report"]
+                    print(f"[{report['risk_level'].upper()}] {item['path']} ({len(report['findings'])} findings; complete={report['scan_complete']})")
+            print(f"Summary: {batch.scanned} scanned, {batch.failed} failed")
+            print("Note: Results are heuristic indicators, not a malware verdict.")
+        return 1 if batch.failed else 0
     try:
         raw_report = scan_file(args.file)
         report = raw_report if args.raw else explain_security_report(raw_report)
     except (OSError, ValueError) as exc:
         print(f"ravshield: scan failed: {exc}", file=sys.stderr)
         return 2
-
     if args.json:
         print(report_to_json(report))
         return 0
-
     print(f"File: {args.file}")
     print(f"Type: {report.file_type}")
     print(f"Risk: {report.risk_level}")
